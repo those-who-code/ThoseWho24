@@ -1,0 +1,751 @@
+/* MARK: - App Shell */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 420px;
+  margin: 0 auto;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* MARK: - Game View */
+
+.game-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding-bottom: 32px;
+}
+
+/* Top bar */
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 0;
+}
+
+.timer {
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+}
+
+.hint-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 0;
+  color: rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 0;
+}
+
+.hint-btn:hover:not(:disabled) {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.hint-btn--exhausted {
+  opacity: 0.2;
+  cursor: default;
+}
+
+
+/* Message */
+.game-message {
+  text-align: center;
+  font-size: 28px;
+  font-weight: 600;
+  color: #000;
+  margin: auto 0 32px;
+  padding-top: 16px;
+}
+
+/* Card grid */
+.card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 0 32px;
+  margin-bottom: auto;
+}
+
+.card {
+  height: 110px;
+  border-radius: 16px;
+  border: 1.5px solid rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, opacity 0.3s ease, transform 0.3s ease;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  outline: none;
+}
+
+.card:focus-visible {
+  outline: 2px solid rgba(0, 0, 0, 0.35);
+  outline-offset: 2px;
+}
+
+/* Suppress browser :active flash — React handles the selected state */
+.card:active:not(.card--selected) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.card--selected:active {
+  background: #000;
+}
+
+.card:hover:not(.card--hidden):not(.card--selected) {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.card--selected {
+  background: #000;
+  border-color: #000;
+}
+
+.card--hidden {
+  opacity: 0;
+  transform: scale(0.8);
+  pointer-events: none;
+}
+
+.card-number {
+  font-size: 36px;
+  font-weight: 600;
+  color: #000;
+  line-height: 1;
+}
+
+.card--selected .card-number {
+  color: #fff;
+}
+
+.card-fraction {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #000;
+  line-height: 1;
+}
+
+.card--selected .card-fraction {
+  color: #fff;
+}
+
+.fraction-divider {
+  display: block;
+  height: 1.5px;
+  width: 36px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 1px;
+}
+
+.card--selected .fraction-divider {
+  background: rgba(255, 255, 255, 0.5);
+}
+
+/* Solution steps */
+.solution-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 32px;
+  margin-bottom: auto;
+}
+
+.solution-step {
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 20px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.75);
+  text-align: center;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+}
+
+/* Operator bar */
+.operator-bar {
+  display: flex;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 14px;
+  overflow: hidden;
+  margin: auto 32px 0;
+}
+
+.operator-btn {
+  flex: 1;
+  height: 56px;
+  border: none;
+  background: transparent;
+  font-size: 24px;
+  font-weight: 500;
+  color: #000;
+  cursor: pointer;
+  transition: background 0.1s ease, color 0.1s ease;
+  border-radius: 0;
+  padding: 0;
+}
+
+.operator-btn:hover {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.operator-btn--selected {
+  background: #000;
+  color: #fff;
+}
+
+.operator-btn--selected:hover {
+  background: #000;
+}
+
+/* Bottom buttons */
+.bottom-buttons {
+  display: flex;
+  gap: 12px;
+  padding: 20px 32px 0;
+}
+
+.bottom-btn {
+  flex: 1;
+  height: 48px;
+  border-radius: 12px;
+  border: none;
+  background: rgba(0, 0, 0, 0.05);
+  color: #000;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: background 0.12s ease, opacity 0.12s ease;
+}
+
+.bottom-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.bottom-btn--filled {
+  background: #000;
+  color: #fff;
+}
+
+.bottom-btn--filled:hover {
+  background: #222;
+}
+
+.bottom-btn--disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.bottom-btn-icon {
+  font-size: 14px;
+}
+
+/* MARK: - Completed View */
+
+.completed-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 32px;
+}
+
+.completed-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 48px;
+  margin-bottom: 24px;
+}
+
+.completed-title {
+  font-size: 36px;
+  font-weight: 700;
+  color: #000;
+  margin: 0 0 4px;
+}
+
+.completed-time {
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+  margin: 0;
+}
+
+.solutions-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.solutions-count {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+  margin: 0;
+}
+
+.solution-card {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.solution-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.35);
+  margin: 0 0 8px;
+}
+
+.solution-line {
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 17px;
+  color: rgba(0, 0, 0, 0.8);
+  margin: 0 0 4px;
+}
+
+.solution-line:last-child {
+  margin-bottom: 0;
+}
+
+.next-game-btn {
+  margin: 20px 32px 0;
+  height: 54px;
+  border-radius: 14px;
+  border: none;
+  background: #000;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.next-game-btn:hover {
+  background: #222;
+}
+
+/* MARK: - Multiplayer nav button (top bar) */
+
+.mp-nav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.35);
+  padding: 4px 0;
+}
+
+.mp-nav-btn:hover {
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* MARK: - Lobby / Waiting Room shell */
+
+.lobby-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.lobby-body {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  flex: 1;
+  justify-content: center;
+  padding: 0 32px;
+}
+
+.lobby-title-section {
+  text-align: center;
+}
+
+.lobby-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #000;
+  margin: 0 0 6px;
+}
+
+.lobby-subtitle {
+  font-size: 15px;
+  color: rgba(0, 0, 0, 0.4);
+  margin: 0;
+}
+
+/* Mode picker */
+.mp-mode-picker {
+  display: flex;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.mp-mode-btn {
+  flex: 1;
+  height: 44px;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  border-radius: 0;
+}
+
+.mp-mode-btn--active {
+  background: #000;
+  color: #fff;
+}
+
+/* Inputs */
+.lobby-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mp-input {
+  width: 100%;
+  height: 52px;
+  border: none;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.05);
+  font-size: 17px;
+  font-family: inherit;
+  padding: 0 16px;
+  color: #000;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.mp-input::placeholder {
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.mp-input:focus {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.mp-input--mono {
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  letter-spacing: 0.05em;
+}
+
+/* Action button */
+.mp-action-btn {
+  width: 100%;
+  height: 54px;
+  border-radius: 14px;
+  border: none;
+  background: #000;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+}
+
+.mp-action-btn:hover:not(:disabled) {
+  background: #222;
+}
+
+.mp-action-btn--disabled {
+  background: rgba(0, 0, 0, 0.1);
+  color: rgba(0, 0, 0, 0.25);
+  cursor: default;
+}
+
+.mp-action-btn--loading {
+  cursor: default;
+}
+
+/* Spinner */
+.mp-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Close / back buttons */
+.mp-close-btn,
+.mp-back-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+}
+
+.mp-close-btn:hover,
+.mp-back-btn:hover {
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.mp-round-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+/* MARK: - Scoreboard */
+
+.scoreboard {
+  display: flex;
+  gap: 8px;
+}
+
+.score-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 10px;
+}
+
+.score-cell--me {
+  background: #000;
+}
+
+.score-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #000;
+  line-height: 1;
+}
+
+.score-cell--me .score-value {
+  color: #fff;
+}
+
+.score-name {
+  font-size: 10px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.5);
+  margin-top: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.score-cell--me .score-name {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+/* MARK: - Waiting Room */
+
+.room-code-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-code-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.35);
+  margin: 0;
+}
+
+.room-code-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.room-code-value {
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  font-size: 36px;
+  font-weight: 700;
+  color: #000;
+  letter-spacing: 0.05em;
+}
+
+.room-code-copy {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.3);
+}
+
+.room-code-copied {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.35);
+  margin: 0;
+}
+
+.waiting-players {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.waiting-players-count {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.35);
+  margin: 0 0 10px 16px;
+}
+
+.waiting-players-list {
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.waiting-player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+}
+
+.waiting-player-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: #000;
+}
+
+.waiting-player-host {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.waiting-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  margin: 0 16px;
+}
+
+.waiting-status {
+  text-align: center;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.35);
+  margin: 0;
+}
+
+/* MARK: - Round result overlay */
+
+.round-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.round-overlay-content {
+  text-align: center;
+  padding: 40px;
+}
+
+.round-overlay-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: #000;
+  margin: 0 0 12px;
+}
+
+.round-overlay-sub {
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+  margin: 0;
+}
+
+/* MARK: - Dissolved view */
+
+.dissolved-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 40px 32px;
+}
+
+.dissolved-reason {
+  font-size: 18px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.6);
+  text-align: center;
+  margin: 0;
+}
+
+/* MARK: - Error toast */
+
+.error-toast {
+  position: fixed;
+  bottom: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 12px 20px;
+  border-radius: 12px;
+  cursor: pointer;
+  z-index: 100;
+  white-space: nowrap;
+  max-width: calc(100vw - 64px);
+  text-align: center;
+}
