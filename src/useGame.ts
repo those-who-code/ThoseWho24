@@ -209,6 +209,11 @@ export function useGameWithNumbers(numbers: number[]) {
     undoStack: [],
   })
 
+  useEffect(() => {
+    const interval = setInterval(() => dispatch({ type: 'TICK' }), 1000)
+    return () => clearInterval(interval)
+  }, [])
+
   const canUndo = state.undoStack.length > 0 && !state.didWin
   const solutionFullyRevealed =
     solutions.length === 0 || state.revealedStepCount >= solutions[0].length

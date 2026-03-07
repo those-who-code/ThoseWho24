@@ -4,7 +4,7 @@ import {
   createRoom, joinRoom, fetchPlayers,
   leaveRoom as svcLeaveRoom,
   startRound, submitSolution as svcSubmitSolution,
-  pingPlayer,
+  pingPlayer, setTotalRounds, completeGame, resetRoom,
 } from './supabase'
 import type { RoomRow, PlayerRow, SubmissionRow } from './supabase'
 import { Fraction, findAllSolutions } from './game'
@@ -18,6 +18,7 @@ export type LobbyState =
   | { kind: 'playing' }
   | { kind: 'roundOver'; winnerName: string; didWin: boolean }
   | { kind: 'dissolved'; reason: string }
+  | { kind: 'gameOver' }
 
 export interface MpState {
   lobbyState: LobbyState
@@ -29,6 +30,7 @@ export interface MpState {
   myPlayerId: string | null
   isHost: boolean
   gameNumbers: number[] | null
+  totalRounds: number
 }
 
 // MARK: - Helpers
@@ -54,6 +56,7 @@ export function useMultiplayer() {
     myPlayerId: null,
     isHost: false,
     gameNumbers: null,
+    totalRounds: 5,
   })
 
   // Always-current ref so realtime callbacks don't close over stale state
@@ -100,12 +103,23 @@ export function useMultiplayer() {
         { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` },
         (payload) => {
           const room = payload.new as RoomRow
-          setState(s => ({ ...s, currentRoom: room }))
+          setState(s => ({
+            ...s,
+            currentRoom: room,
+            // Non-host learns totalRounds from DB; host already set it locally
+            totalRounds: s.isHost ? s.totalRounds : (room.total_rounds ?? s.totalRounds),
+          }))
           if (room.status === 'playing' && room.numbers?.length === 4) {
             setState(s => ({ ...s, gameNumbers: room.numbers, lobbyState: { kind: 'playing' } }))
           } else if (room.status === 'finished') {
-            stopSubscriptions()
-            setState(s => ({ ...s, lobbyState: { kind: 'dissolved', reason: 'The host ended the game.' } }))
+            // keep channel alive so we can receive a play-again reset
+            if (room.round >= room.total_rounds) {
+              setState(s => ({ ...s, lobbyState: { kind: 'gameOver' } }))
+            } else {
+              setState(s => ({ ...s, lobbyState: { kind: 'dissolved', reason: 'The host ended the game.' } }))
+            }
+          } else if (room.status === 'waiting') {
+            setState(s => ({ ...s, lobbyState: { kind: 'waitingRoom' }, totalRounds: 5, gameNumbers: null }))
           }
         },
       )
@@ -139,13 +153,19 @@ export function useMultiplayer() {
             ),
           }))
 
-          // Host schedules the next round
+          // Host schedules the next round or ends the game
+          const submittedRound = submission.round       // from the event payload, always correct
+          const totalRounds = s.totalRounds             // from MpState, never overwritten by DB events
           if (stateRef.current.isHost) {
             setTimeout(async () => {
               const cur = stateRef.current
               if (!cur.currentRoom || !cur.myPlayerId) return
               try {
-                await startRound(cur.currentRoom.id, cur.myPlayerId, generateSolvablePuzzle())
+                if (submittedRound >= totalRounds) {
+                  await completeGame(cur.currentRoom.id)
+                } else {
+                  await startRound(cur.currentRoom.id, cur.myPlayerId, generateSolvablePuzzle())
+                }
               } catch { /* ignore */ }
             }, 2800)
           }
@@ -194,11 +214,13 @@ export function useMultiplayer() {
     }
   }, [merge, beginSubscriptions, startHeartbeat])
 
-  const doStartGame = useCallback(async () => {
+  const doStartGame = useCallback(async (totalRounds: number) => {
     const s = stateRef.current
     if (!s.isHost || !s.currentRoom || !s.myPlayerId || s.players.length < 2) return
     try {
+      merge({ totalRounds })  // set authoritatively before any DB round-trips
       await startRound(s.currentRoom.id, s.myPlayerId, generateSolvablePuzzle())
+      await setTotalRounds(s.currentRoom.id, totalRounds)  // after RPC, overwriting any default reset
     } catch (e) {
       merge({ errorMessage: (e as Error).message })
     }
@@ -224,8 +246,20 @@ export function useMultiplayer() {
     }
   }, [merge])
 
+  const doPlayAgain = useCallback(async () => {
+    const s = stateRef.current
+    if (!s.isHost || !s.currentRoom) return
+    try {
+      await resetRoom(s.currentRoom.id)
+      merge({ lobbyState: { kind: 'waitingRoom' }, totalRounds: 5, gameNumbers: null })
+    } catch (e) {
+      merge({ errorMessage: (e as Error).message })
+    }
+  }, [merge])
+
   const dismissError = useCallback(() => {
-    if (stateRef.current.lobbyState.kind === 'dissolved') {
+    const kind = stateRef.current.lobbyState.kind
+    if (kind === 'dissolved' || kind === 'gameOver') {
       resetToNameEntry()
     } else {
       merge({ errorMessage: null })
@@ -241,6 +275,7 @@ export function useMultiplayer() {
     doStartGame,
     doLeaveRoom,
     doSubmitSolution,
+    doPlayAgain,
     dismissError,
   }
 }

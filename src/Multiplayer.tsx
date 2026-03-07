@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMultiplayer } from './useMultiplayer'
 import { useGameWithNumbers } from './useGame'
 import { OPERATORS } from './game'
@@ -31,6 +31,7 @@ function MultiplayerGame({
   players,
   myPlayerId,
   round,
+  totalRounds,
   onSubmit,
   onLeave,
 }: {
@@ -38,30 +39,32 @@ function MultiplayerGame({
   players: PlayerRow[]
   myPlayerId: string | null
   round: number
+  totalRounds: number
   onSubmit: (solutionStr: string, elapsedSeconds: number) => void
   onLeave: () => void
 }) {
   const game = useGameWithNumbers(numbers)
 
+  const onSubmitRef = useRef(onSubmit)
+  onSubmitRef.current = onSubmit
+
+  useEffect(() => {
+    if (!game.didWin) return
+    const solutionStr =
+      game.allSolutions[0]?.map(s => `${s.a} ${s.op} ${s.b} = ${s.result}`).join(', ') ?? 'solved'
+    onSubmitRef.current(solutionStr, game.elapsedSeconds)
+  }, [game.didWin])
+
   const handleCardTap = (i: number) => game.dispatch({ type: 'CARD_TAP', index: i })
   const handleSelectOp = (op: MathOperator) => game.dispatch({ type: 'SELECT_OPERATOR', op })
   const handleUndo = () => game.dispatch({ type: 'UNDO' })
-
-  const handleSubmit = () => {
-    if (!game.didWin) return
-    const solutionStr =
-      game.allSolutions[0]
-        ?.map(s => `${s.a} ${s.op} ${s.b} = ${s.result}`)
-        .join(', ') ?? 'solved'
-    onSubmit(solutionStr, game.elapsedSeconds)
-  }
 
   return (
     <div className="game-view">
       {/* Top bar */}
       <div className="top-bar">
         <button className="mp-back-btn" onClick={onLeave}>← Leave</button>
-        <span className="mp-round-label">Round {round}</span>
+        <span className="mp-round-label">Round {round} / {totalRounds}</span>
         <span style={{ width: 64 }} />
       </div>
 
@@ -116,13 +119,6 @@ function MultiplayerGame({
         >
           <span className="bottom-btn-icon">↩</span> Undo
         </button>
-        <button
-          className={`bottom-btn bottom-btn--filled ${!game.didWin ? 'bottom-btn--disabled' : ''}`}
-          onClick={handleSubmit}
-          disabled={!game.didWin}
-        >
-          <span className="bottom-btn-icon">✓</span> Submit
-        </button>
       </div>
     </div>
   )
@@ -147,6 +143,8 @@ function RoundResultOverlay({ winnerName, didWin }: { winnerName: string; didWin
 
 // MARK: - Waiting Room
 
+const ROUND_OPTIONS = [5, 10, 20] as const
+
 function WaitingRoomView({
   players,
   currentRoom,
@@ -157,10 +155,13 @@ function WaitingRoomView({
   players: PlayerRow[]
   currentRoom: { code: string } | null
   isHost: boolean
-  onStartGame: () => void
+  onStartGame: (totalRounds: number) => void
   onLeave: () => void
 }) {
   const [copied, setCopied] = useState(false)
+  const [roundCount, setRoundCount] = useState<number>(5)
+  const [isCustom, setIsCustom] = useState(false)
+  const [customValue, setCustomValue] = useState('')
 
   const copyCode = () => {
     if (!currentRoom) return
@@ -209,12 +210,49 @@ function WaitingRoomView({
         )}
       </div>
 
-      <div style={{ padding: '0 32px 40px' }}>
+      <div style={{ padding: '0 32px 40px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {isHost && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <p className="waiting-players-count">Rounds</p>
+            <div className="mp-mode-picker">
+              {ROUND_OPTIONS.map(n => (
+                <button
+                  key={n}
+                  className={`mp-mode-btn ${!isCustom && roundCount === n ? 'mp-mode-btn--active' : ''}`}
+                  onClick={() => { setRoundCount(n); setIsCustom(false) }}
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                className={`mp-mode-btn ${isCustom ? 'mp-mode-btn--active' : ''}`}
+                onClick={() => setIsCustom(true)}
+              >
+                Custom
+              </button>
+            </div>
+            {isCustom && (
+              <input
+                className="mp-input mp-input--mono"
+                type="number"
+                min={1}
+                placeholder="Enter rounds"
+                value={customValue}
+                onChange={e => {
+                  setCustomValue(e.target.value)
+                  const n = parseInt(e.target.value, 10)
+                  if (!isNaN(n) && n > 0) setRoundCount(n)
+                }}
+                autoFocus
+              />
+            )}
+          </div>
+        )}
         {isHost ? (
           <button
-            className={`mp-action-btn ${players.length < 2 ? 'mp-action-btn--disabled' : ''}`}
-            onClick={onStartGame}
-            disabled={players.length < 2}
+            className={`mp-action-btn ${players.length < 2 || (isCustom && !(parseInt(customValue, 10) > 0)) ? 'mp-action-btn--disabled' : ''}`}
+            onClick={() => onStartGame(roundCount)}
+            disabled={players.length < 2 || (isCustom && !(parseInt(customValue, 10) > 0))}
           >
             Start Game
           </button>
@@ -223,6 +261,47 @@ function WaitingRoomView({
             Waiting for host to start...
           </p>
         )}
+      </div>
+    </div>
+  )
+}
+
+// MARK: - Game Over
+
+function GameOverView({ players, myPlayerId, isHost, onPlayAgain, onBack }: {
+  players: PlayerRow[]
+  myPlayerId: string | null
+  isHost: boolean
+  onPlayAgain: () => void
+  onBack: () => void
+}) {
+  const sorted = [...players].sort((a, b) => b.score - a.score)
+  const winner = sorted[0]
+  return (
+    <div className="gameover-view">
+      <h1 className="gameover-title">Game Over</h1>
+      {winner && (
+        <div style={{ textAlign: 'center' }}>
+          <p className="gameover-winner">{winner.display_name}</p>
+          <p className="gameover-winner-sub">wins!</p>
+        </div>
+      )}
+      <div className="gameover-scores">
+        {sorted.map((p, i) => (
+          <div key={p.id} className={`gameover-row ${p.id === myPlayerId ? 'gameover-row--me' : ''}`}>
+            <span className="gameover-rank">#{i + 1}</span>
+            <span className="gameover-name">{p.display_name}</span>
+            <span className="gameover-score">{p.score}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {isHost && (
+          <button className="mp-action-btn" onClick={onPlayAgain}>Play Again</button>
+        )}
+        <button className="mp-action-btn" style={{ background: 'rgba(0,0,0,0.07)', color: '#000' }} onClick={onBack}>
+          Back to Menu
+        </button>
       </div>
     </div>
   )
@@ -365,6 +444,7 @@ export function MultiplayerRoot({ onExit }: { onExit: () => void }) {
               players={state.players}
               myPlayerId={state.myPlayerId}
               round={state.currentRoom?.round ?? 1}
+              totalRounds={state.totalRounds}
               onSubmit={(solutionStr, elapsedSeconds) => {
                 mp.doSubmitSolution(solutionStr).then((ok) => {
                   if (ok && state.gameNumbers) {
@@ -393,6 +473,14 @@ export function MultiplayerRoot({ onExit }: { onExit: () => void }) {
             Back to Menu
           </button>
         </div>
+      ) : lobbyState.kind === 'gameOver' ? (
+        <GameOverView
+          players={state.players}
+          myPlayerId={state.myPlayerId}
+          isHost={state.isHost}
+          onPlayAgain={mp.doPlayAgain}
+          onBack={mp.dismissError}
+        />
       ) : null}
     </div>
   )

@@ -14,6 +14,7 @@ export interface RoomRow {
   status: 'waiting' | 'playing' | 'finished'
   numbers: number[] | null
   round: number
+  total_rounds: number
 }
 
 export interface PlayerRow {
@@ -129,6 +130,19 @@ export async function submitSolution(
   })
   if (error) throw new Error(error.message)
   return data as boolean
+}
+
+export async function setTotalRounds(roomId: string, totalRounds: number): Promise<void> {
+  await supabase.from('rooms').update({ total_rounds: totalRounds }).eq('id', roomId)
+}
+
+export async function completeGame(roomId: string): Promise<void> {
+  await supabase.from('rooms').update({ status: 'finished' }).eq('id', roomId)
+}
+
+export async function resetRoom(roomId: string): Promise<void> {
+  await supabase.from('rooms').update({ status: 'waiting', round: 0, numbers: null }).eq('id', roomId)
+  await supabase.from('players').update({ score: 0 }).eq('room_id', roomId)
 }
 
 export async function pingPlayer(playerId: string): Promise<void> {

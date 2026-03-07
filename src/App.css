@@ -832,6 +832,91 @@
   margin: 0;
 }
 
+/* MARK: - Game Over */
+
+.gameover-view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 48px 32px 40px;
+  gap: 28px;
+}
+
+.gameover-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #000;
+  margin: 0;
+}
+
+.gameover-scores {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.gameover-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+}
+
+.gameover-row--me {
+  background: #000;
+}
+
+.gameover-rank {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.35);
+  width: 24px;
+}
+
+.gameover-row--me .gameover-rank {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.gameover-name {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 500;
+  color: #000;
+}
+
+.gameover-row--me .gameover-name {
+  color: #fff;
+}
+
+.gameover-score {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  color: #000;
+}
+
+.gameover-row--me .gameover-score {
+  color: #fff;
+}
+
+.gameover-winner {
+  font-size: 22px;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.gameover-winner-sub {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.45);
+  text-align: center;
+  margin-bottom: 32px;
+}
+
 /* MARK: - Error toast */
 
 .error-toast {
