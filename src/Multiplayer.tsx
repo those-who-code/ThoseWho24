@@ -4,6 +4,7 @@ import { useGameWithNumbers } from './useGame'
 import { OPERATORS } from './game'
 import type { MathOperator } from './game'
 import type { PlayerRow } from './supabase'
+import { recordSolve, problemKeyFromNumbers } from './stats'
 
 // MARK: - Scoreboard
 
@@ -37,7 +38,7 @@ function MultiplayerGame({
   players: PlayerRow[]
   myPlayerId: string | null
   round: number
-  onSubmit: (solutionStr: string) => void
+  onSubmit: (solutionStr: string, elapsedSeconds: number) => void
   onLeave: () => void
 }) {
   const game = useGameWithNumbers(numbers)
@@ -52,7 +53,7 @@ function MultiplayerGame({
       game.allSolutions[0]
         ?.map(s => `${s.a} ${s.op} ${s.b} = ${s.result}`)
         .join(', ') ?? 'solved'
-    onSubmit(solutionStr)
+    onSubmit(solutionStr, game.elapsedSeconds)
   }
 
   return (
@@ -364,7 +365,17 @@ export function MultiplayerRoot({ onExit }: { onExit: () => void }) {
               players={state.players}
               myPlayerId={state.myPlayerId}
               round={state.currentRoom?.round ?? 1}
-              onSubmit={mp.doSubmitSolution}
+              onSubmit={(solutionStr, elapsedSeconds) => {
+                mp.doSubmitSolution(solutionStr).then((ok) => {
+                  if (ok && state.gameNumbers) {
+                    recordSolve(
+                      problemKeyFromNumbers(state.gameNumbers),
+                      elapsedSeconds,
+                      'multiplayer'
+                    )
+                  }
+                })
+              }}
               onLeave={mp.doLeaveRoom}
             />
           )}

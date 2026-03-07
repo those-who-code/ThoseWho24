@@ -213,13 +213,14 @@ export function useMultiplayer() {
     resetToNameEntry()
   }, [stopSubscriptions, resetToNameEntry])
 
-  const doSubmitSolution = useCallback(async (solutionStr: string) => {
+  const doSubmitSolution = useCallback(async (solutionStr: string): Promise<boolean> => {
     const s = stateRef.current
-    if (!s.currentRoom || !s.myPlayerId) return
+    if (!s.currentRoom || !s.myPlayerId) return false
     try {
-      await svcSubmitSolution(s.currentRoom.id, s.myPlayerId, s.currentRoom.round, solutionStr)
+      return await svcSubmitSolution(s.currentRoom.id, s.myPlayerId, s.currentRoom.round, solutionStr)
     } catch (e) {
       merge({ errorMessage: (e as Error).message })
+      return false
     }
   }, [merge])
 

@@ -352,6 +352,108 @@
   background: #222;
 }
 
+.completed-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 32px 24px;
+}
+
+.completed-actions .next-game-btn {
+  margin: 0;
+  width: 100%;
+}
+
+.stats-link-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+}
+
+.stats-link-btn:hover {
+  color: rgba(0, 0, 0, 0.8);
+}
+
+/* MARK: - Stats view */
+
+.stats-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 0 24px;
+}
+
+.stats-content {
+  flex: 1;
+  padding-top: 24px;
+  overflow-y: auto;
+  padding-bottom: 32px;
+}
+
+.stats-title {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0 0 24px;
+  color: #000;
+}
+
+.stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 14px;
+}
+
+.stats-value {
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Mono', 'Courier New', monospace;
+  color: #000;
+}
+
+.stats-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.stats-chart-section {
+  margin-top: 28px;
+}
+
+.stats-section-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.4);
+  margin: 0 0 10px;
+}
+
+.stats-chart-container {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 14px;
+  padding: 16px 8px 8px;
+}
+
+.chart-empty {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.3);
+  text-align: center;
+  padding: 28px 0;
+}
+
 /* MARK: - Multiplayer nav button (top bar) */
 
 .mp-nav-btn {

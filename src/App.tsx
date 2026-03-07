@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import { useGame } from './useGame';
 import { OPERATORS } from './game';
 import type { Fraction, MathOperator, Solution, SolutionStep } from './game';
 import { MultiplayerRoot } from './Multiplayer';
+import { getStats, getSolves, recordSolve, problemKeyFromFractions } from './stats';
+import type { SolveRecord } from './stats';
 
 // MARK: - Fraction Display
 
@@ -106,6 +108,7 @@ function GameView({
   onHideHints,
   onNewPuzzle,
   onMultiplayer,
+  onStats,
 }: {
   timerString: string;
   cards: ReturnType<typeof useGame>['cards'];
@@ -124,6 +127,7 @@ function GameView({
   onHideHints: () => void;
   onNewPuzzle: () => void;
   onMultiplayer: () => void;
+  onStats: () => void;
 }) {
   const visibleSteps = (allSolutions[0] ?? []).slice(0, revealedStepCount);
 
@@ -132,9 +136,14 @@ function GameView({
       {/* Top bar */}
       <div className="top-bar">
         <span className="timer">{timerString}</span>
-        <button className="mp-nav-btn" onClick={onMultiplayer}>
-          Multiplayer
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="mp-nav-btn" onClick={onStats}>
+            Stats
+          </button>
+          <button className="mp-nav-btn" onClick={onMultiplayer}>
+            Multiplayer
+          </button>
+        </div>
         <button
           className={`hint-btn ${solutionFullyRevealed ? 'hint-btn--exhausted' : ''}`}
           onClick={onRevealStep}
@@ -198,10 +207,12 @@ function CompletedView({
   timerString,
   allSolutions,
   onNewPuzzle,
+  onStats,
 }: {
   timerString: string;
   allSolutions: Solution[];
   onNewPuzzle: () => void;
+  onStats: () => void;
 }) {
   return (
     <div className="completed-view">
@@ -226,9 +237,158 @@ function CompletedView({
         ))}
       </div>
 
-      <button className="next-game-btn" onClick={onNewPuzzle}>
-        Next Game
-      </button>
+      <div className="completed-actions">
+        <button className="next-game-btn" onClick={onNewPuzzle}>
+          Next Game
+        </button>
+        <button className="stats-link-btn" onClick={onStats}>
+          Stats
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// MARK: - Stats View
+
+function formatAxisTime(seconds: number): string {
+  if (seconds === 0) return '0';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return s === 0 ? `${m}m` : `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatChartDate(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function niceStep(range: number, targetTicks: number): number {
+  const raw = range / targetTicks;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  return ([1, 2, 5, 10].find(f => f * mag >= raw) ?? 10) * mag;
+}
+
+function SolveTimeChart({ solves }: { solves: SolveRecord[] }) {
+  type TimedRecord = SolveRecord & { timestamp: number };
+  const timed = (solves as TimedRecord[])
+    .filter(r => typeof r.timestamp === 'number')
+    .sort((a, b) => a.timestamp - b.timestamp);
+
+  if (timed.length < 2) {
+    return (
+      <div className="chart-empty">
+        {timed.length === 0
+          ? 'Solve some puzzles to see your progress'
+          : 'Solve one more puzzle to see your progress graph'}
+      </div>
+    );
+  }
+
+  const VW = 320, VH = 160;
+  const ML = 36, MR = 12, MT = 12, MB = 28;
+  const plotW = VW - ML - MR;
+  const plotH = VH - MT - MB;
+
+  const maxY = Math.max(...timed.map(r => r.elapsedSeconds));
+  const yPad = Math.max(5, Math.ceil(maxY * 0.15));
+  const yMax = maxY + yPad;
+  const step = niceStep(yMax, 4);
+  const yTicks: number[] = [];
+  for (let v = 0; v <= yMax; v += step) yTicks.push(v);
+
+  const xOf = (i: number) => ML + (i / (timed.length - 1)) * plotW;
+  const yOf = (s: number) => MT + plotH - (s / yMax) * plotH;
+
+  const points = timed.map((r, i) => `${xOf(i)},${yOf(r.elapsedSeconds)}`).join(' ');
+  const showDots = timed.length <= 40;
+
+  const labelIdxs = [0, Math.floor((timed.length - 1) / 2), timed.length - 1]
+    .filter((v, i, arr) => arr.indexOf(v) === i);
+
+  return (
+    <svg viewBox={`0 0 ${VW} ${VH}`} width="100%">
+      {yTicks.map(tick => (
+        <g key={tick}>
+          <line
+            x1={ML} x2={VW - MR}
+            y1={yOf(tick)} y2={yOf(tick)}
+            stroke="rgba(0,0,0,0.07)" strokeWidth="1"
+          />
+          <text
+            x={ML - 4} y={yOf(tick) + 4}
+            textAnchor="end" fontSize="9" fill="rgba(0,0,0,0.35)"
+          >
+            {formatAxisTime(tick)}
+          </text>
+        </g>
+      ))}
+      {labelIdxs.map(i => (
+        <text
+          key={i} x={xOf(i)} y={VH - 4}
+          textAnchor="middle" fontSize="9" fill="rgba(0,0,0,0.35)"
+        >
+          {formatChartDate(timed[i].timestamp)}
+        </text>
+      ))}
+      <polyline
+        points={points}
+        fill="none"
+        stroke="#000"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      {showDots && timed.map((r, i) => (
+        <circle key={i} cx={xOf(i)} cy={yOf(r.elapsedSeconds)} r="2.5" fill="#000" />
+      ))}
+    </svg>
+  );
+}
+
+function formatTime(seconds: number): string {
+  if (seconds <= 0) return '0:00';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function StatsView({ onBack }: { onBack: () => void }) {
+  const stats = getStats();
+  const solves = getSolves();
+  const avgDisplay = stats.totalSolves > 0 ? formatTime(stats.averageTimeSeconds) : '—';
+
+  return (
+    <div className="stats-view">
+      <div className="top-bar">
+        <button className="mp-back-btn" onClick={onBack}>
+          ← Back
+        </button>
+      </div>
+      <div className="stats-content">
+        <h1 className="stats-title">Stats</h1>
+        <div className="stats-grid">
+          <div className="stats-card">
+            <span className="stats-value">{stats.totalSolves}</span>
+            <span className="stats-label">Lifetime solves</span>
+          </div>
+          <div className="stats-card">
+            <span className="stats-value">{stats.uniqueProblems}</span>
+            <span className="stats-label">Unique problems solved</span>
+          </div>
+          <div className="stats-card">
+            <span className="stats-value">{avgDisplay}</span>
+            <span className="stats-label">Average time per solve</span>
+          </div>
+        </div>
+        <div className="stats-chart-section">
+          <p className="stats-section-label">Solve time over time</p>
+          <div className="stats-chart-container">
+            <SolveTimeChart solves={solves} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -237,7 +397,27 @@ function CompletedView({
 
 export default function App() {
   const game = useGame();
-  const [mode, setMode] = useState<'solo' | 'multiplayer'>('solo');
+  const [mode, setMode] = useState<'solo' | 'multiplayer' | 'stats'>('solo');
+  const recordedCompletionRef = useRef(false);
+
+  useEffect(() => {
+    if (!game.showCompleted) recordedCompletionRef.current = false;
+  }, [game.showCompleted]);
+
+  useEffect(() => {
+    if (
+      game.showCompleted &&
+      game.initialValues.length === 4 &&
+      !recordedCompletionRef.current
+    ) {
+      recordSolve(
+        problemKeyFromFractions(game.initialValues),
+        game.elapsedSeconds,
+        'solo'
+      );
+      recordedCompletionRef.current = true;
+    }
+  }, [game.showCompleted, game.initialValues, game.elapsedSeconds]);
 
   const handleCardTap = (i: number) => game.dispatch({ type: 'CARD_TAP', index: i });
   const handleSelectOp = (op: MathOperator) => game.dispatch({ type: 'SELECT_OPERATOR', op });
@@ -249,6 +429,14 @@ export default function App() {
     return <MultiplayerRoot onExit={() => setMode('solo')} />;
   }
 
+  if (mode === 'stats') {
+    return (
+      <div className="app">
+        <StatsView onBack={() => setMode('solo')} />
+      </div>
+    );
+  }
+
   return (
     <div className="app">
       {game.showCompleted ? (
@@ -256,6 +444,7 @@ export default function App() {
           timerString={game.timerString}
           allSolutions={game.allSolutions}
           onNewPuzzle={game.generateNewPuzzle}
+          onStats={() => setMode('stats')}
         />
       ) : (
         <GameView
@@ -276,6 +465,7 @@ export default function App() {
           onHideHints={handleHideHints}
           onNewPuzzle={game.generateNewPuzzle}
           onMultiplayer={() => setMode('multiplayer')}
+          onStats={() => setMode('stats')}
         />
       )}
     </div>
