@@ -373,6 +373,10 @@ class GameViewModel: ObservableObject {
                 didWin = true
                 stopTimer()
                 message = ":)"
+                StatsManager.shared.recordSolve(
+                    seconds: elapsedSeconds,
+                    numbers: initialValues.map { $0.num }
+                )
                 Haptics.successDoubleTap()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     withAnimation { self.showCompleted = true }
@@ -407,16 +411,17 @@ class GameViewModel: ObservableObject {
 struct ContentView: View {
     @StateObject private var vm = GameViewModel()
     var onMultiplayerTap: (() -> Void)? = nil
+    var onStatsTap: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            Theme.backgroundGradient.ignoresSafeArea()
 
             if vm.showCompleted {
                 CompletedView(vm: vm)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else {
-                GameView(vm: vm, onMultiplayerTap: onMultiplayerTap)
+                GameView(vm: vm, onMultiplayerTap: onMultiplayerTap, onStatsTap: onStatsTap)
             }
         }
     }
@@ -432,19 +437,19 @@ struct FractionView: View {
     var body: some View {
         if fraction.isWhole {
             Text("\(fraction.num)")
-                .font(.system(size: fontSize, weight: .semibold, design: .rounded))
+                .font(.system(size: fontSize, weight: .bold, design: .rounded))
                 .foregroundColor(color)
         } else {
             VStack(spacing: 1) {
                 Text("\(fraction.num)")
-                    .font(.system(size: fontSize * 0.55, weight: .semibold, design: .rounded))
+                    .font(.system(size: fontSize * 0.55, weight: .bold, design: .rounded))
                     .foregroundColor(color)
                 Rectangle()
                     .fill(color.opacity(0.4))
-                    .frame(height: 1.5)
+                    .frame(height: 2)
                     .frame(maxWidth: fontSize * 1.8)
                 Text("\(fraction.den)")
-                    .font(.system(size: fontSize * 0.55, weight: .semibold, design: .rounded))
+                    .font(.system(size: fontSize * 0.55, weight: .bold, design: .rounded))
                     .foregroundColor(color)
             }
         }
@@ -456,16 +461,40 @@ struct FractionView: View {
 struct GameView: View {
     @ObservedObject var vm: GameViewModel
     var onMultiplayerTap: (() -> Void)? = nil
+    var onStatsTap: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             // Top bar
             HStack {
-                Text(vm.timerString)
-                    .font(.system(size: 16, weight: .medium, design: .monospaced))
-                    .foregroundColor(.black.opacity(0.4))
+                HStack(spacing: 5) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(vm.timerString)
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                }
+                .foregroundColor(Theme.brown.opacity(0.5))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Theme.cream.opacity(0.7))
+                .clipShape(Capsule())
 
                 Spacer()
+
+                if let onStatsTap {
+                    Button {
+                        Haptics.light()
+                        onStatsTap()
+                    } label: {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .frame(width: 32, height: 32)
+                            .background(Theme.cream.opacity(0.7))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 if let onMultiplayerTap {
                     Button {
@@ -473,13 +502,18 @@ struct GameView: View {
                         onMultiplayerTap()
                     } label: {
                         HStack(spacing: 4) {
-                            Image(systemName: "person.2")
-                                .font(.system(size: 15, weight: .medium))
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 14, weight: .medium))
                             Text("Multiplayer")
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                         }
-                        .foregroundColor(.black.opacity(0.35))
+                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.cream.opacity(0.7))
+                        .clipShape(Capsule())
                     }
+                    .buttonStyle(.plain)
                     Spacer()
                 }
 
@@ -488,16 +522,21 @@ struct GameView: View {
                     vm.revealNextStep()
                 } label: {
                     HStack(spacing: 4) {
-                        Image(systemName: "lightbulb")
-                            .font(.system(size: 18, weight: .medium))
+                        Image(systemName: "lightbulb.fill")
+                            .font(.system(size: 16, weight: .medium))
                         if vm.showingSolution && !vm.solutionFullyRevealed {
                             Text("Next")
-                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                                .font(.system(size: 13, weight: .semibold, design: .rounded))
                         }
                     }
-                    .foregroundColor(vm.solutionFullyRevealed ? .black.opacity(0.15) : .black.opacity(0.35))
+                    .foregroundColor(vm.solutionFullyRevealed ? Theme.amber.opacity(0.3) : Theme.amber)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Theme.cream.opacity(0.7))
+                    .clipShape(Capsule())
                 }
                 .disabled(vm.solutionFullyRevealed)
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
@@ -506,8 +545,8 @@ struct GameView: View {
 
             // Title
             Text(vm.message)
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
-                .foregroundColor(.black)
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .foregroundColor(Theme.brown)
                 .padding(.bottom, 32)
 
             // Cards 2x2
@@ -518,7 +557,8 @@ struct GameView: View {
                         MinimalCardView(
                             fraction: card.value,
                             isSelected: vm.selectedCardIndex == index,
-                            isVisible: card.isVisible
+                            isVisible: card.isVisible,
+                            colorIndex: index
                         )
                         .onTapGesture {
                             Haptics.selection()
@@ -539,27 +579,30 @@ struct GameView: View {
 
             // Operators
             if !vm.showingSolution {
-                HStack(spacing: 0) {
+                HStack(spacing: 4) {
                     ForEach(MathOperator.allCases, id: \.self) { op in
                         Button {
                             Haptics.light()
                             vm.selectedOperator = op
                         } label: {
                             Text(op.rawValue)
-                                .font(.system(size: 24, weight: .medium, design: .rounded))
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 56)
-                                .foregroundColor(vm.selectedOperator == op ? .white : .black)
+                                .foregroundColor(vm.selectedOperator == op ? Theme.cardSelectedText : Theme.brown)
                                 .background(
                                     vm.selectedOperator == op
-                                        ? Color.black
-                                        : Color.clear
+                                        ? Theme.operatorSelected
+                                        : Theme.operatorBg
                                 )
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .background(Color.black.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(4)
+                .background(Theme.cream.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
                 .padding(.horizontal, 32)
             }
 
@@ -598,38 +641,46 @@ struct CompletedView: View {
             Spacer()
 
             Text("Solved!")
-                .font(.system(size: 36, weight: .bold, design: .rounded))
-                .foregroundColor(.black)
+                .font(.system(size: 40, weight: .bold, design: .rounded))
+                .foregroundColor(Theme.brown)
                 .padding(.bottom, 4)
 
-            Text("\(vm.timerString)")
-                .font(.system(size: 16, weight: .medium, design: .monospaced))
-                .foregroundColor(.black.opacity(0.4))
-                .padding(.bottom, 32)
+            HStack(spacing: 5) {
+                Image(systemName: "clock")
+                    .font(.system(size: 13, weight: .medium))
+                Text(vm.timerString)
+                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+            }
+            .foregroundColor(Theme.brown.opacity(0.5))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Theme.cream.opacity(0.7))
+            .clipShape(Capsule())
+            .padding(.bottom, 32)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 16) {
                     Text("\(vm.allSolutions.count) solution\(vm.allSolutions.count == 1 ? "" : "s") found")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.black.opacity(0.4))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Theme.textMuted)
                         .padding(.horizontal, 32)
 
                     ForEach(Array(vm.allSolutions.prefix(50).enumerated()), id: \.offset) { idx, solution in
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Solution \(idx + 1)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.black.opacity(0.35))
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Theme.amber)
 
                             ForEach(Array(solution.enumerated()), id: \.offset) { _, step in
                                 Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
-                                    .font(.system(size: 17, weight: .regular, design: .monospaced))
-                                    .foregroundColor(.black.opacity(0.8))
+                                    .font(.system(size: 17, weight: .medium, design: .monospaced))
+                                    .foregroundColor(Theme.brown.opacity(0.8))
                             }
                         }
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.black.opacity(0.03))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .background(Theme.cream)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                         .padding(.horizontal, 32)
                     }
                 }
@@ -641,16 +692,21 @@ struct CompletedView: View {
                 Haptics.heavy()
                 vm.generateNewPuzzle()
             } label: {
-                Text("Next Game")
-                    .font(.system(size: 17, weight: .semibold, design: .rounded))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(Color.black)
-                    .foregroundColor(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                HStack(spacing: 6) {
+                    Text("Next Game")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 14, weight: .bold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(Theme.buttonPrimary)
+                .foregroundColor(Theme.cardSelectedText)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
             }
             .padding(.horizontal, 32)
             .padding(.bottom, 32)
+            .buttonStyle(.plain)
         }
     }
 }
@@ -661,27 +717,30 @@ struct MinimalCardView: View {
     let fraction: Fraction
     let isSelected: Bool
     let isVisible: Bool
+    var colorIndex: Int = 0
+
+    private var cardBg: Color {
+        if isSelected { return Theme.cardSelected }
+        return Theme.cardColors[colorIndex % Theme.cardColors.count]
+    }
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(isSelected ? Color.black : Color.black.opacity(0.04))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(Color.black.opacity(isSelected ? 1 : 0.08), lineWidth: 1.5)
-                )
+            RoundedRectangle(cornerRadius: 20)
+                .fill(cardBg)
+                .shadow(color: Theme.brown.opacity(isSelected ? 0.25 : 0.08), radius: isSelected ? 8 : 4, y: isSelected ? 4 : 2)
 
             FractionView(
                 fraction: fraction,
                 fontSize: 36,
-                color: isSelected ? .white : .black
+                color: isSelected ? Theme.cardSelectedText : Theme.brown
             )
         }
         .frame(height: 110)
         .opacity(isVisible ? 1 : 0)
-        .scaleEffect(isVisible ? 1 : 0.8)
-        .animation(.spring(response: 0.3), value: isVisible)
-        .animation(.easeOut(duration: 0.12), value: isSelected)
+        .scaleEffect(isVisible ? 1 : 0.85)
+        .animation(.spring(response: 0.35, dampingFraction: 0.7), value: isVisible)
+        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isSelected)
     }
 }
 
@@ -690,20 +749,27 @@ struct SolutionStepsView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            ForEach(Array(solution.enumerated()), id: \.offset) { _, step in
-                HStack {
+            ForEach(Array(solution.enumerated()), id: \.offset) { idx, step in
+                HStack(spacing: 8) {
+                    Text("\(idx + 1)")
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(width: 24, height: 24)
+                        .background(Theme.amber)
+                        .clipShape(Circle())
+
                     Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
-                        .font(.system(size: 20, weight: .medium, design: .monospaced))
-                        .foregroundColor(.black.opacity(0.75))
+                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.brown.opacity(0.8))
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.black.opacity(0.03))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(Theme.cream)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.easeOut(duration: 0.25), value: solution.count)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: solution.count)
     }
 }
 
@@ -718,16 +784,18 @@ struct BottomButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 14, weight: .bold))
                 Text(label)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(filled ? Color.black : Color.black.opacity(enabled ? 0.05 : 0.03))
-            .foregroundColor(filled ? .white : .black.opacity(enabled ? 1 : 0.25))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .frame(height: 50)
+            .background(filled ? Theme.buttonPrimary : Theme.buttonSecondary.opacity(enabled ? 1 : 0.5))
+            .foregroundColor(filled ? Theme.cardSelectedText : Theme.brown.opacity(enabled ? 1 : 0.35))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+            .shadow(color: Theme.brown.opacity(filled ? 0.15 : 0.05), radius: 4, y: 2)
         }
+        .buttonStyle(.plain)
         .disabled(!enabled)
     }
 }

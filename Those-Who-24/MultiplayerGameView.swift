@@ -17,22 +17,27 @@ struct MultiplayerGameView: View {
                     onExit()
                 } label: {
                     Image(systemName: "arrow.left")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.black.opacity(0.35))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .frame(width: 32, height: 32)
+                        .background(Theme.cream.opacity(0.7))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
 
                 Spacer()
 
                 Text("Round \(vm.currentRoom?.round ?? 1)")
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundColor(.black.opacity(0.5))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(Theme.brown.opacity(0.5))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Theme.cream.opacity(0.7))
+                    .clipShape(Capsule())
 
                 Spacer()
 
-                // Balance the layout
-                Image(systemName: "arrow.left")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.clear)
+                Color.clear.frame(width: 32, height: 32)
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
@@ -46,8 +51,8 @@ struct MultiplayerGameView: View {
 
             // Message
             Text(gameVM.message)
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
-                .foregroundColor(.black)
+                .font(.system(size: 32, weight: .bold, design: .rounded))
+                .foregroundColor(Theme.brown)
                 .padding(.bottom, 32)
 
             // Cards 2x2
@@ -57,7 +62,8 @@ struct MultiplayerGameView: View {
                     MinimalCardView(
                         fraction: card.value,
                         isSelected: gameVM.selectedCardIndex == index,
-                        isVisible: card.isVisible
+                        isVisible: card.isVisible,
+                        colorIndex: index
                     )
                     .onTapGesture {
                         Haptics.selection()
@@ -70,25 +76,28 @@ struct MultiplayerGameView: View {
             Spacer()
 
             // Operators
-            HStack(spacing: 0) {
+            HStack(spacing: 4) {
                 ForEach(MathOperator.allCases, id: \.self) { op in
                     Button {
                         Haptics.light()
                         gameVM.selectedOperator = op
                     } label: {
                         Text(op.rawValue)
-                            .font(.system(size: 24, weight: .medium, design: .rounded))
+                            .font(.system(size: 24, weight: .bold, design: .rounded))
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
-                            .foregroundColor(gameVM.selectedOperator == op ? .white : .black)
+                            .foregroundColor(gameVM.selectedOperator == op ? Theme.cardSelectedText : Theme.brown)
                             .background(
-                                gameVM.selectedOperator == op ? Color.black : Color.clear
+                                gameVM.selectedOperator == op ? Theme.operatorSelected : Theme.operatorBg
                             )
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
+                    .buttonStyle(.plain)
                 }
             }
-            .background(Color.black.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(4)
+            .background(Theme.cream.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 18))
             .padding(.horizontal, 32)
 
             // Bottom buttons
@@ -123,17 +132,17 @@ struct ScoreboardView: View {
                 VStack(spacing: 2) {
                     Text("\(player.score)")
                         .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(isMe ? .white : .black)
+                        .foregroundColor(isMe ? .white : Theme.brown)
                     Text(player.displayName)
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(isMe ? .white.opacity(0.75) : .black.opacity(0.5))
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(isMe ? .white.opacity(0.8) : Theme.brown.opacity(0.5))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(isMe ? Color.black : Color.black.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.vertical, 10)
+                .background(isMe ? Theme.scoreMe : Theme.scoreOther)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
             }
         }
     }

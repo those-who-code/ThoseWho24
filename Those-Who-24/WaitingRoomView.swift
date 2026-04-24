@@ -24,12 +24,17 @@ struct WaitingRoomView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.left")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 13, weight: .bold))
                         Text("Leave")
-                            .font(.system(size: 15, weight: .medium, design: .rounded))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
                     }
-                    .foregroundColor(.black.opacity(0.4))
+                    .foregroundColor(Theme.brown.opacity(0.5))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Theme.cream.opacity(0.7))
+                    .clipShape(Capsule())
                 }
+                .buttonStyle(.plain)
                 Spacer()
             }
             .padding(.horizontal, 24)
@@ -39,10 +44,10 @@ struct WaitingRoomView: View {
 
             VStack(spacing: 36) {
                 // Room code
-                VStack(spacing: 8) {
+                VStack(spacing: 10) {
                     Text("Room Code")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.black.opacity(0.35))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Theme.textMuted)
 
                     Button {
                         #if canImport(UIKit)
@@ -59,20 +64,25 @@ struct WaitingRoomView: View {
                             withAnimation { codeCopied = false }
                         }
                     } label: {
-                        HStack(spacing: 8) {
+                        HStack(spacing: 10) {
                             Text(vm.currentRoom?.code ?? "------")
                                 .font(.system(size: 36, weight: .bold, design: .monospaced))
-                                .foregroundColor(.black)
-                            Image(systemName: codeCopied ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.black.opacity(0.3))
+                                .foregroundColor(Theme.brown)
+                            Image(systemName: codeCopied ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(codeCopied ? Theme.warmGreen : Theme.amber)
                         }
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Theme.cream)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
+                    .buttonStyle(.plain)
 
                     if codeCopied {
                         Text("Copied!")
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundColor(.black.opacity(0.35))
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(Theme.warmGreen)
                             .transition(.opacity)
                     }
                 }
@@ -80,47 +90,63 @@ struct WaitingRoomView: View {
                 // Players list
                 VStack(alignment: .leading, spacing: 0) {
                     Text("\(vm.players.count) player\(vm.players.count == 1 ? "" : "s")")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.black.opacity(0.35))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Theme.textMuted)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 10)
 
                     VStack(spacing: 0) {
                         ForEach(vm.players) { player in
                             HStack {
+                                Circle()
+                                    .fill(Theme.warmGreen.opacity(0.3))
+                                    .frame(width: 32, height: 32)
+                                    .overlay(
+                                        Text(String(player.displayName.prefix(1)).uppercased())
+                                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                                            .foregroundColor(Theme.warmGreen)
+                                    )
+
                                 Text(player.displayName)
-                                    .font(.system(size: 16, weight: .medium, design: .rounded))
-                                    .foregroundColor(.black)
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundColor(Theme.brown)
                                 Spacer()
                                 if player.isHost {
                                     Text("Host")
-                                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                                        .foregroundColor(.black.opacity(0.35))
+                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                        .foregroundColor(Theme.amber)
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 4)
-                                        .background(Color.black.opacity(0.05))
-                                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                                        .background(Theme.amber.opacity(0.15))
+                                        .clipShape(Capsule())
                                 }
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 12)
 
                             if player.id != vm.players.last?.id {
                                 Divider()
+                                    .background(Theme.brown.opacity(0.08))
                                     .padding(.horizontal, 16)
                             }
                         }
                     }
-                    .background(Color.black.opacity(0.04))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .background(Theme.cream)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
                     .padding(.horizontal, 32)
                 }
 
                 // Status text
                 if vm.players.count < 2 {
-                    Text("Waiting for more players...")
-                        .font(.system(size: 14, weight: .regular, design: .rounded))
-                        .foregroundColor(.black.opacity(0.35))
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.7)
+                            .tint(Theme.brown.opacity(0.35))
+                        Text("Waiting for more players...")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(Theme.textMuted)
+                    }
                 }
             }
 
@@ -132,24 +158,36 @@ struct WaitingRoomView: View {
                     Haptics.heavy()
                     Task { await vm.startGame() }
                 } label: {
-                    Text("Start Game")
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(vm.players.count >= 2 ? Color.black : Color.black.opacity(0.1))
-                        .foregroundColor(vm.players.count >= 2 ? .white : .black.opacity(0.25))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("Start Game")
+                            .font(.system(size: 17, weight: .bold, design: .rounded))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(vm.players.count >= 2 ? Theme.buttonPrimary : Theme.buttonSecondary)
+                    .foregroundColor(vm.players.count >= 2 ? Theme.cardSelectedText : Theme.brown.opacity(0.3))
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .shadow(color: Theme.brown.opacity(vm.players.count >= 2 ? 0.15 : 0), radius: 6, y: 3)
                 }
+                .buttonStyle(.plain)
                 .disabled(vm.players.count < 2)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 40)
             } else {
-                Text("Waiting for host to start...")
-                    .font(.system(size: 14, weight: .regular, design: .rounded))
-                    .foregroundColor(.black.opacity(0.35))
-                    .padding(.bottom, 40)
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.7)
+                        .tint(Theme.brown.opacity(0.35))
+                    Text("Waiting for host to start...")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(Theme.textMuted)
+                }
+                .padding(.bottom, 40)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: vm.players.count)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: vm.players.count)
     }
 }

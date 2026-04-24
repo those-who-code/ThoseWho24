@@ -26,9 +26,13 @@ struct LobbyView: View {
                     onExit()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.black.opacity(0.4))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .frame(width: 32, height: 32)
+                        .background(Theme.cream.opacity(0.7))
+                        .clipShape(Circle())
                 }
+                .buttonStyle(.plain)
 
                 Spacer()
             }
@@ -40,42 +44,52 @@ struct LobbyView: View {
             VStack(spacing: 32) {
                 // Title
                 VStack(spacing: 6) {
-                    Text("Multiplayer")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundColor(.black)
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.2.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(Theme.amber)
+                        Text("Multiplayer")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(Theme.brown)
+                    }
                     Text("Race to make 24")
-                        .font(.system(size: 15, weight: .regular, design: .rounded))
-                        .foregroundColor(.black.opacity(0.4))
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundColor(Theme.textSecondary)
                 }
 
                 // Mode picker
-                HStack(spacing: 0) {
+                HStack(spacing: 4) {
                     ForEach([(LobbyMode.create, "Create"), (LobbyMode.join, "Join")], id: \.1) { mode, label in
                         Button {
                             Haptics.selection()
-                            withAnimation(.easeOut(duration: 0.15)) { lobbyMode = mode }
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) { lobbyMode = mode }
                         } label: {
                             Text(label)
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 44)
-                                .foregroundColor(lobbyMode == mode ? .white : .black.opacity(0.5))
-                                .background(lobbyMode == mode ? Color.black : Color.clear)
+                                .foregroundColor(lobbyMode == mode ? Theme.cardSelectedText : Theme.brown.opacity(0.5))
+                                .contentShape(Rectangle())
+                                .background(lobbyMode == mode ? Theme.buttonPrimary : Color.white.opacity(0.001))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .background(Color.black.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(4)
+                .background(Theme.cream)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal, 32)
 
                 // Input fields
                 VStack(spacing: 12) {
                     TextField("Display name", text: $vm.displayName)
-                        .font(.system(size: 17, design: .rounded))
+                        .font(.system(size: 17, weight: .medium, design: .rounded))
+                        .foregroundColor(Theme.brown)
                         .padding(.horizontal, 16)
                         .frame(height: 52)
-                        .background(Color.black.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .background(Theme.cream)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .focused($nameFieldFocused)
                         .submitLabel(.next)
                         .autocorrectionDisabled()
@@ -85,11 +99,12 @@ struct LobbyView: View {
 
                     if lobbyMode == .join {
                         TextField("Room code (e.g. ABC123)", text: $vm.joinCode)
-                            .font(.system(size: 17, design: .monospaced))
+                            .font(.system(size: 17, weight: .medium, design: .monospaced))
+                            .foregroundColor(Theme.brown)
                             .padding(.horizontal, 16)
                             .frame(height: 52)
-                            .background(Color.black.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .background(Theme.cream)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.characters)
@@ -115,18 +130,24 @@ struct LobbyView: View {
                         if isLoading {
                             ProgressView()
                                 .progressViewStyle(.circular)
-                                .tint(.white)
+                                .tint(Theme.cardSelectedText)
                         } else {
-                            Text(lobbyMode == .create ? "Create Room" : "Join Room")
-                                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                                .foregroundColor(.white)
+                            HStack(spacing: 6) {
+                                Image(systemName: lobbyMode == .create ? "plus.circle.fill" : "arrow.right.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                Text(lobbyMode == .create ? "Create Room" : "Join Room")
+                                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                            }
+                            .foregroundColor(Theme.cardSelectedText)
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 54)
-                    .background(Color.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .background(Theme.buttonPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                    .shadow(color: Theme.brown.opacity(0.15), radius: 6, y: 3)
                 }
+                .buttonStyle(.plain)
                 .disabled(isLoading)
                 .padding(.horizontal, 32)
             }

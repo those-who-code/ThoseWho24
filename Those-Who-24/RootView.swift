@@ -5,6 +5,7 @@ import SwiftUI
 enum AppMode {
     case singlePlayer
     case multiplayer
+    case stats
 }
 
 // MARK: - Root View
@@ -17,7 +18,13 @@ struct RootView: View {
         ZStack {
             switch mode {
             case .singlePlayer:
-                ContentView(onMultiplayerTap: { mode = .multiplayer })
+                ContentView(
+                    onMultiplayerTap: { mode = .multiplayer },
+                    onStatsTap: { mode = .stats }
+                )
+                .transition(.opacity)
+            case .stats:
+                StatsView(onBack: { mode = .singlePlayer })
                     .transition(.opacity)
             case .multiplayer:
                 MultiplayerRootView(vm: mpVM) {
@@ -27,7 +34,7 @@ struct RootView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: mode == .singlePlayer)
+        .animation(.easeInOut(duration: 0.2), value: mode)
     }
 }
 
@@ -39,7 +46,7 @@ struct MultiplayerRootView: View {
 
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            Theme.backgroundGradient.ignoresSafeArea()
 
             switch vm.state {
             case .nameEntry, .loading:
@@ -73,12 +80,12 @@ struct MultiplayerRootView: View {
                 VStack {
                     Spacer()
                     Text(msg)
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundColor(.white)
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundColor(Theme.cream)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .background(Color.black.opacity(0.85))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .background(Theme.brown.opacity(0.9))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .padding(.bottom, 48)
                         .onTapGesture { vm.dismissError() }
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -97,18 +104,22 @@ struct RoundResultOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.white.opacity(0.92).ignoresSafeArea()
+            Theme.backgroundTop.opacity(0.95).ignoresSafeArea()
 
-            VStack(spacing: 12) {
+            VStack(spacing: 16) {
+                Image(systemName: didWin ? "star.fill" : "clock.badge.exclamationmark")
+                    .font(.system(size: 40))
+                    .foregroundColor(didWin ? Theme.amber : Theme.brown.opacity(0.4))
+
                 Text(didWin ? "You solved it!" : "\(winnerName) was faster")
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(.black)
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(Theme.brown)
                     .multilineTextAlignment(.center)
 
                 if !didWin {
                     Text("Next round coming up...")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundColor(.black.opacity(0.4))
+                        .foregroundColor(Theme.textSecondary)
                 }
             }
             .padding(40)
@@ -123,10 +134,14 @@ struct DissolvedView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
+            Image(systemName: "leaf.fill")
+                .font(.system(size: 36))
+                .foregroundColor(Theme.warmGreen.opacity(0.5))
+
             Text(reason)
                 .font(.system(size: 18, weight: .medium, design: .rounded))
-                .foregroundColor(.black.opacity(0.6))
+                .foregroundColor(Theme.textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 40)
 
@@ -134,12 +149,12 @@ struct DissolvedView: View {
                 Haptics.medium()
                 onDismiss()
             }
-            .font(.system(size: 17, weight: .semibold, design: .rounded))
+            .font(.system(size: 17, weight: .bold, design: .rounded))
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(Color.black)
-            .foregroundColor(.white)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .frame(height: 54)
+            .background(Theme.buttonPrimary)
+            .foregroundColor(Theme.cardSelectedText)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
             .padding(.horizontal, 40)
         }
     }
