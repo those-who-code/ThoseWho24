@@ -6,6 +6,7 @@ enum AppMode {
     case singlePlayer
     case multiplayer
     case stats
+    case settings
 }
 
 // MARK: - Root View
@@ -13,6 +14,7 @@ enum AppMode {
 struct RootView: View {
     @State private var mode: AppMode = .singlePlayer
     @State private var mpVM = MultiplayerViewModel()
+    @ObservedObject private var themeManager = ThemeManager.shared
 
     var body: some View {
         ZStack {
@@ -20,11 +22,15 @@ struct RootView: View {
             case .singlePlayer:
                 ContentView(
                     onMultiplayerTap: { mode = .multiplayer },
-                    onStatsTap: { mode = .stats }
+                    onStatsTap: { mode = .stats },
+                    onSettingsTap: { mode = .settings }
                 )
                 .transition(.opacity)
             case .stats:
                 StatsView(onBack: { mode = .singlePlayer })
+                    .transition(.opacity)
+            case .settings:
+                SettingsView(onBack: { mode = .singlePlayer })
                     .transition(.opacity)
             case .multiplayer:
                 MultiplayerRootView(vm: mpVM) {

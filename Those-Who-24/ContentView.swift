@@ -410,8 +410,10 @@ class GameViewModel: ObservableObject {
 
 struct ContentView: View {
     @StateObject private var vm = GameViewModel()
+    @ObservedObject private var themeManager = ThemeManager.shared
     var onMultiplayerTap: (() -> Void)? = nil
     var onStatsTap: (() -> Void)? = nil
+    var onSettingsTap: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -421,7 +423,7 @@ struct ContentView: View {
                 CompletedView(vm: vm)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else {
-                GameView(vm: vm, onMultiplayerTap: onMultiplayerTap, onStatsTap: onStatsTap)
+                GameView(vm: vm, onMultiplayerTap: onMultiplayerTap, onStatsTap: onStatsTap, onSettingsTap: onSettingsTap)
             }
         }
     }
@@ -462,6 +464,7 @@ struct GameView: View {
     @ObservedObject var vm: GameViewModel
     var onMultiplayerTap: (() -> Void)? = nil
     var onStatsTap: (() -> Void)? = nil
+    var onSettingsTap: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
@@ -480,6 +483,21 @@ struct GameView: View {
                 .clipShape(Capsule())
 
                 Spacer()
+
+                if let onSettingsTap {
+                    Button {
+                        Haptics.light()
+                        onSettingsTap()
+                    } label: {
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .frame(width: 32, height: 32)
+                            .background(Theme.cream.opacity(0.7))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
 
                 if let onStatsTap {
                     Button {
