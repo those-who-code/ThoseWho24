@@ -721,9 +721,10 @@ struct GameView: View {
                 }
                 .padding(.horizontal, 32)
             } else {
-                // Show revealed steps
+                // Show revealed steps (last step first)
                 SolutionStepsView(
-                    solution: Array((vm.allSolutions.first?.steps ?? []).prefix(vm.revealedStepCount))
+                    solution: vm.allSolutions.first?.steps ?? [],
+                    revealedCount: vm.revealedStepCount
                 )
                 .padding(.horizontal, 32)
             }
@@ -736,7 +737,7 @@ struct GameView: View {
                     ForEach(MathOperator.allCases, id: \.self) { op in
                         Button {
                             Haptics.light()
-                            vm.selectedOperator = op
+                            vm.selectedOperator = vm.selectedOperator == op ? nil : op
                         } label: {
                             Text(op.rawValue)
                                 .font(.system(size: 24, weight: .bold, design: .rounded))
@@ -903,30 +904,47 @@ struct MinimalCardView: View {
 
 struct SolutionStepsView: View {
     let solution: [SolutionStep]
+    let revealedCount: Int
 
     var body: some View {
         VStack(spacing: 12) {
             ForEach(Array(solution.enumerated()), id: \.offset) { idx, step in
-                HStack(spacing: 8) {
-                    Text("\(idx + 1)")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .frame(width: 24, height: 24)
-                        .background(Theme.amber)
-                        .clipShape(Circle())
+                let isRevealed = idx >= solution.count - revealedCount
+                Group {
+                    if isRevealed {
+                        HStack(spacing: 8) {
+                            Text("\(idx + 1)")
+                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                .foregroundColor(.white)
+                                .frame(width: 24, height: 24)
+                                .background(Theme.amber)
+                                .clipShape(Circle())
 
-                    Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
-                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.brown.opacity(0.8))
+                            Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
+                                .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Theme.brown.opacity(0.8))
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    } else {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(Theme.amber.opacity(0.25))
+                                .frame(width: 24, height: 24)
+
+                            Capsule()
+                                .fill(Theme.brown.opacity(0.12))
+                                .frame(height: 18)
+                        }
+                    }
                 }
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 14)
+                .padding(.horizontal, 16)
                 .background(Theme.cream)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: solution.count)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: revealedCount)
     }
 }
 
