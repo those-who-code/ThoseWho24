@@ -208,6 +208,15 @@ final class SupabaseService {
         }
     }
 
+    // MARK: - Ready Signal
+
+    func markReady(playerId: UUID, round: Int) async throws {
+        try await client.from("players")
+            .update(["ready_round": round])
+            .eq("id", value: playerId.uuidString)
+            .execute()
+    }
+
     // MARK: - Heartbeat
 
     func pingPlayer(playerId: UUID) async {

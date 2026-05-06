@@ -139,6 +139,15 @@ struct Solution {
     let steps: [SolutionStep]
 }
 
+struct PlayerMove {
+    let firstIdx: Int   // card index that was consumed
+    let secondIdx: Int  // card index that received the result
+    let op: String      // operator raw value: "+", "−", "×", "÷"
+    let aLabel: String
+    let bLabel: String
+    let resultLabel: String
+}
+
 // Canonical expression tree.
 // + and × are commutative+associative (chains are flattened and sorted).
 // − is treated as addition with a negated sign (a−b flattens into the same signed pool as a+b).
@@ -344,6 +353,7 @@ class GameViewModel: ObservableObject {
     private var startTime: Date?
     private var undoStack: [BoardSnapshot] = []
     var allSolutions: [Solution] = []
+    var playerMoves: [PlayerMove] = []
     var isMultiplayer = false
 
     var canUndo: Bool { !undoStack.isEmpty && !didWin }
@@ -362,6 +372,7 @@ class GameViewModel: ObservableObject {
         showingSolution = false
         revealedStepCount = 0
         undoStack = []
+        playerMoves = []
         isGameOver = false
         didWin = false
         selectedCardIndex = nil
@@ -400,6 +411,7 @@ class GameViewModel: ObservableObject {
         showingSolution = false
         revealedStepCount = 0
         undoStack = []
+        playerMoves = []
         startTimer()
     }
 
@@ -444,6 +456,7 @@ class GameViewModel: ObservableObject {
         selectedOperator = nil
         isGameOver = false
         didWin = false
+        if !playerMoves.isEmpty { playerMoves.removeLast() }
     }
 
     func handleCardTap(at index: Int) {
@@ -485,6 +498,10 @@ class GameViewModel: ObservableObject {
         }
 
         saveSnapshot()
+        playerMoves.append(PlayerMove(
+            firstIdx: firstIndex, secondIdx: index, op: op.rawValue,
+            aLabel: formatValue(val1), bLabel: formatValue(val2), resultLabel: formatValue(result)
+        ))
 
         cards[firstIndex].isVisible = false
         cards[index].value = result

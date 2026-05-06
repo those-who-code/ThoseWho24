@@ -7,7 +7,7 @@ enum LobbyState: Equatable {
     case loading
     case waitingRoom
     case playing
-    case roundOver(winnerName: String, didWin: Bool)
+    case roundOver(winnerName: String, didWin: Bool, winnerSolution: String)
     case dissolved(reason: String)
 
     static func == (lhs: LobbyState, rhs: LobbyState) -> Bool {
@@ -17,8 +17,8 @@ enum LobbyState: Equatable {
              (.waitingRoom, .waitingRoom),
              (.playing, .playing):
             return true
-        case (.roundOver(let a, let b), .roundOver(let c, let d)):
-            return a == c && b == d
+        case (.roundOver(let a, let b, let c), .roundOver(let d, let e, let f)):
+            return a == d && b == e && c == f
         case (.dissolved(let a), .dissolved(let b)):
             return a == b
         default:
@@ -128,9 +128,19 @@ class MultiplayerViewModel {
               let gvm = gameVM,
               gvm.didWin else { return }
 
-        let solutionStr = gvm.allSolutions.first.map { sol in
-            sol.steps.map { "\($0.a) \($0.op) \($0.b) = \($0.result)" }.joined(separator: ", ")
-        } ?? "solved"
+        let moves = gvm.playerMoves
+        let displayStr: String
+        let indexStr: String
+        if !moves.isEmpty {
+            displayStr = moves.map { "\($0.aLabel) \($0.op) \($0.bLabel) = \($0.resultLabel)" }.joined(separator: ", ")
+            indexStr = moves.map { "\($0.firstIdx):\($0.secondIdx):\($0.op):\($0.resultLabel)" }.joined(separator: ",")
+        } else {
+            displayStr = gvm.allSolutions.first.map { sol in
+                sol.steps.map { "\($0.a) \($0.op) \($0.b) = \($0.result)" }.joined(separator: ", ")
+            } ?? "solved"
+            indexStr = ""
+        }
+        let solutionStr = indexStr.isEmpty ? displayStr : "\(displayStr)|\(indexStr)"
 
         do {
             let won = try await service.submitSolution(
@@ -161,6 +171,17 @@ class MultiplayerViewModel {
                     guard let self, let roomId = self.myRoomId else { return }
                     if let updated = try? await self.service.fetchPlayers(roomId: roomId) {
                         self.players = updated
+                        // Host starts next round once every player has marked ready
+                        if self.isHost, case .roundOver = self.state {
+                            let currentRound = self.currentRoom?.round ?? 0
+                            let allReady = !updated.isEmpty && updated.allSatisfy { $0.readyRound >= currentRound }
+                            if allReady {
+                                let numbers = self.generateSolvablePuzzle()
+                                if let rId = self.myRoomId, let pId = self.myPlayerId {
+                                    try? await self.service.startRound(roomId: rId, hostPlayerId: pId, numbers: numbers)
+                                }
+                            }
+                        }
                     }
                 }
             },
@@ -194,20 +215,18 @@ class MultiplayerViewModel {
         let winnerName = winner?.displayName ?? "Someone"
         let didIWin = submission.playerId == myPlayerId
 
-        state = .roundOver(winnerName: winnerName, didWin: didIWin)
+        state = .roundOver(winnerName: winnerName, didWin: didIWin, winnerSolution: submission.solution)
 
         if let idx = players.firstIndex(where: { $0.id == submission.playerId }) {
             players[idx].score += 1
         }
 
-        if isHost {
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 2_800_000_000)
-                guard let self, let roomId = self.myRoomId, let playerId = self.myPlayerId else { return }
-                let numbers = self.generateSolvablePuzzle()
-                try? await self.service.startRound(roomId: roomId, hostPlayerId: playerId, numbers: numbers)
-            }
-        }
+    }
+
+    func markReady() async {
+        guard let playerId = myPlayerId, let round = currentRoom?.round,
+              case .roundOver = state else { return }
+        try? await service.markReady(playerId: playerId, round: round)
     }
 
     private func dealRound(numbers: [Int]) {

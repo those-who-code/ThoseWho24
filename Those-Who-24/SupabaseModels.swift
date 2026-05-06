@@ -20,18 +20,32 @@ enum RoomStatus: String, Codable {
     case waiting, playing, finished
 }
 
-struct PlayerRow: Codable, Identifiable {
+struct PlayerRow: Identifiable {
     let id: UUID
     let roomId: UUID
     let displayName: String
     var score: Int
     let isHost: Bool
+    var readyRound: Int
+}
 
+extension PlayerRow: Codable {
     enum CodingKeys: String, CodingKey {
         case id, score
         case roomId = "room_id"
         case displayName = "display_name"
         case isHost = "is_host"
+        case readyRound = "ready_round"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        roomId = try c.decode(UUID.self, forKey: .roomId)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        score = try c.decode(Int.self, forKey: .score)
+        isHost = try c.decode(Bool.self, forKey: .isHost)
+        readyRound = (try? c.decode(Int.self, forKey: .readyRound)) ?? 0
     }
 }
 
