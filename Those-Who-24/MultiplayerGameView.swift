@@ -75,46 +75,82 @@ struct MultiplayerGameView: View {
 
             Spacer()
 
-            // Operators
-            HStack(spacing: 4) {
-                ForEach(MathOperator.allCases, id: \.self) { op in
-                    Button {
-                        Haptics.light()
-                        gameVM.selectedOperator = op
-                    } label: {
-                        Text(op.rawValue)
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 56)
-                            .foregroundColor(gameVM.selectedOperator == op ? Theme.cardSelectedText : Theme.brown)
-                            .background(
-                                gameVM.selectedOperator == op ? Theme.operatorSelected : Theme.operatorBg
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(4)
-            .background(Theme.cream.opacity(0.5))
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .padding(.horizontal, 32)
+            if gameVM.didWin {
+                // Solutions list after winning
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("\(gameVM.allSolutions.count) solution\(gameVM.allSolutions.count == 1 ? "" : "s")")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(Theme.textMuted)
+                            .padding(.horizontal, 32)
 
-            // Bottom buttons
-            HStack(spacing: 12) {
-                BottomButton(label: "Undo", icon: "arrow.uturn.backward", enabled: gameVM.canUndo) {
-                    Haptics.medium()
-                    gameVM.undo()
+                        ForEach(Array(gameVM.allSolutions.prefix(50).enumerated()), id: \.offset) { idx, sol in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Solution \(idx + 1)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(Theme.amber)
+
+                                Text(sol.expression)
+                                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                    .foregroundColor(Theme.brown)
+
+                                ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
+                                    Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
+                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .foregroundColor(Theme.brown.opacity(0.6))
+                                }
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.cream)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .padding(.horizontal, 32)
+                        }
+                    }
+                    .padding(.vertical, 8)
                 }
-                BottomButton(label: "Submit", icon: "checkmark", filled: true,
-                             enabled: gameVM.didWin) {
-                    Haptics.heavy()
-                    Task { await vm.submitSolution() }
+            } else {
+                // Operators
+                HStack(spacing: 4) {
+                    ForEach(MathOperator.allCases, id: \.self) { op in
+                        Button {
+                            Haptics.light()
+                            gameVM.selectedOperator = op
+                        } label: {
+                            Text(op.rawValue)
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .foregroundColor(gameVM.selectedOperator == op ? Theme.cardSelectedText : Theme.brown)
+                                .background(
+                                    gameVM.selectedOperator == op ? Theme.operatorSelected : Theme.operatorBg
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(4)
+                .background(Theme.cream.opacity(0.5))
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .padding(.horizontal, 32)
+
+                // Bottom buttons
+                HStack(spacing: 12) {
+                    BottomButton(label: "Undo", icon: "arrow.uturn.backward", enabled: gameVM.canUndo) {
+                        Haptics.medium()
+                        gameVM.undo()
+                    }
+                }
+                .padding(.horizontal, 32)
+                .padding(.top, 20)
+                .padding(.bottom, 32)
             }
-            .padding(.horizontal, 32)
-            .padding(.top, 20)
-            .padding(.bottom, 32)
+        }
+        .onChange(of: gameVM.didWin) { _, won in
+            if won {
+                Task { await vm.submitSolution() }
+            }
         }
     }
 }

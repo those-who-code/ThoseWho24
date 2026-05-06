@@ -134,19 +134,142 @@ struct SolutionStep: Hashable {
     let result: String
 }
 
-typealias Solution = [SolutionStep]
+struct Solution {
+    let expression: String   // full expression, e.g. "8 × (6 − (8 − 5))"
+    let steps: [SolutionStep]
+}
+
+// Canonical expression tree.
+// + and × are commutative+associative (chains are flattened and sorted).
+// − is treated as addition with a negated sign (a−b flattens into the same signed pool as a+b).
+// ÷ is treated as multiplication with an inverted power (a÷b flattens into the same product pool).
+// After each combination, identity elements (×1, ÷1, +0, −0) and inverse pairs (a−a, a÷a)
+// are eliminated so that no-op steps don't produce redundant solutions.
+private indirect enum CanonExpr {
+    case leaf(String)
+    case sum([(CanonExpr, Bool)])      // (sub, isPositive), sorted by key+sign
+    case product([(CanonExpr, Bool)])  // (sub, isNumerator), sorted by key+power
+
+    var key: String {
+        switch self {
+        case .leaf(let s): return s
+        case .sum(let terms):
+            return "S:" + terms.map { ($0.1 ? "+" : "-") + $0.0.key }.joined(separator: "|")
+        case .product(let factors):
+            return "P:" + factors.map { ($0.1 ? "*" : "/") + $0.0.key }.joined(separator: "|")
+        }
+    }
+
+    func sumTerms(positive: Bool) -> [(CanonExpr, Bool)] {
+        if case .sum(let t) = self { return positive ? t : t.map { ($0.0, !$0.1) } }
+        return [(self, positive)]
+    }
+
+    func productFactors(numerator: Bool) -> [(CanonExpr, Bool)] {
+        if case .product(let f) = self { return numerator ? f : f.map { ($0.0, !$0.1) } }
+        return [(self, numerator)]
+    }
+
+    static func combine(_ a: CanonExpr, op: String, _ b: CanonExpr) -> CanonExpr {
+        switch op {
+        case "+":
+            var t = a.sumTerms(positive: true) + b.sumTerms(positive: true)
+            t.sort { $0.0.key + ($0.1 ? "+" : "-") < $1.0.key + ($1.1 ? "+" : "-") }
+            return simplifiedSum(t)
+        case "−":
+            var t = a.sumTerms(positive: true) + b.sumTerms(positive: false)
+            t.sort { $0.0.key + ($0.1 ? "+" : "-") < $1.0.key + ($1.1 ? "+" : "-") }
+            return simplifiedSum(t)
+        case "×":
+            var f = a.productFactors(numerator: true) + b.productFactors(numerator: true)
+            f.sort { $0.0.key + ($0.1 ? "*" : "/") < $1.0.key + ($1.1 ? "*" : "/") }
+            return simplifiedProduct(f)
+        case "÷":
+            var f = a.productFactors(numerator: true) + b.productFactors(numerator: false)
+            f.sort { $0.0.key + ($0.1 ? "*" : "/") < $1.0.key + ($1.1 ? "*" : "/") }
+            return simplifiedProduct(f)
+        default: return a
+        }
+    }
+
+    // Cancel (e,+)/(e,−) pairs, then drop leaf("0") additive identities.
+    private static func simplifiedSum(_ terms: [(CanonExpr, Bool)]) -> CanonExpr {
+        var t = terms
+        var i = 0
+        while i < t.count {
+            if let j = t.indices.dropFirst(i + 1).first(where: {
+                t[$0].0.key == t[i].0.key && t[$0].1 != t[i].1
+            }) { t.remove(at: j); t.remove(at: i) } else { i += 1 }
+        }
+        t.removeAll { item in
+            if case .leaf(let s) = item.0 { return s == "0" }
+            return false
+        }
+        if t.isEmpty { return .leaf("0") }
+        if t.count == 1, t[0].1 { return t[0].0 }
+        return .sum(t)
+    }
+
+    // Cancel (e,num)/(e,den) pairs, then drop leaf("1") multiplicative identities.
+    private static func simplifiedProduct(_ factors: [(CanonExpr, Bool)]) -> CanonExpr {
+        var f = factors
+        var i = 0
+        while i < f.count {
+            if let j = f.indices.dropFirst(i + 1).first(where: {
+                f[$0].0.key == f[i].0.key && f[$0].1 != f[i].1
+            }) { f.remove(at: j); f.remove(at: i) } else { i += 1 }
+        }
+        f.removeAll { item in
+            if case .leaf(let s) = item.0 { return s == "1" }
+            return false
+        }
+        if f.isEmpty { return .leaf("1") }
+        if f.count == 1, f[0].1 { return f[0].0 }
+        return .product(f)
+    }
+}
+
+private func stripOuterParens(_ s: String) -> String {
+    guard s.hasPrefix("("), s.hasSuffix(")") else { return s }
+    var depth = 0
+    for (i, c) in s.enumerated() {
+        if c == "(" { depth += 1 }
+        else if c == ")" {
+            depth -= 1
+            if depth == 0 { return i == s.count - 1 ? String(s.dropFirst().dropLast()) : s }
+        }
+    }
+    return s
+}
+
+// Score a step sequence: prefer fewer fractional intermediates, then smaller max value.
+// Lower is better.
+private func solutionScore(_ steps: [SolutionStep]) -> (Int, Int) {
+    let fractions = steps.filter { $0.result.contains("/") }.count
+    let maxMag = steps.flatMap { [$0.a, $0.b, $0.result] }.reduce(0) { acc, s in
+        let parts = s.split(separator: "/")
+        return max(acc, abs(Int(parts.first ?? "") ?? 0))
+    }
+    return (fractions, maxMag)
+}
 
 func findAllSolutions(values: [Fraction]) -> [Solution] {
-    var results: [Solution] = []
-    var seen: Set<String> = []
+    // keyed by CanonExpr.key; value is (score, solution) for the best representative found so far
+    var best: [String: ((Int, Int), Solution)] = [:]
+    var order: [String] = []  // keys in first-seen order, for stable display ordering
 
-    func solve(numbers: [Fraction], labels: [String], steps: [SolutionStep]) {
+    func solve(numbers: [Fraction], labels: [String], canons: [CanonExpr], steps: [SolutionStep]) {
         if numbers.count == 1 {
             if numbers[0] == Fraction(24) {
-                let key = steps.map { "\($0.a)\($0.op)\($0.b)" }.joined(separator: "|")
-                if !seen.contains(key) {
-                    seen.insert(key)
-                    results.append(steps)
+                let key = canons[0].key
+                let sol = Solution(expression: stripOuterParens(labels[0]), steps: steps)
+                let score = solutionScore(steps)
+                if let (prevScore, _) = best[key] {
+                    // Replace if this path has fewer fractions or smaller max value
+                    if score < prevScore { best[key] = (score, sol) }
+                } else {
+                    order.append(key)
+                    best[key] = (score, sol)
                 }
             }
             return
@@ -167,28 +290,32 @@ func findAllSolutions(values: [Fraction]) -> [Solution] {
 
                     var nextNumbers: [Fraction] = []
                     var nextLabels: [String] = []
+                    var nextCanons: [CanonExpr] = []
                     for k in 0..<numbers.count where k != i && k != j {
                         nextNumbers.append(numbers[k])
                         nextLabels.append(labels[k])
+                        nextCanons.append(canons[k])
                     }
 
-                    let resLabel = "(\(labels[i]) \(symbol) \(labels[j]))"
                     nextNumbers.append(res)
-                    nextLabels.append(resLabel)
+                    nextLabels.append("(\(labels[i]) \(symbol) \(labels[j]))")
+                    nextCanons.append(.combine(canons[i], op: symbol, canons[j]))
 
+                    // Steps show numeric values of operands (not expression strings)
                     let step = SolutionStep(
-                        a: labels[i], op: symbol, b: labels[j], result: res.display
+                        a: numbers[i].display, op: symbol, b: numbers[j].display, result: res.display
                     )
 
-                    solve(numbers: nextNumbers, labels: nextLabels, steps: steps + [step])
+                    solve(numbers: nextNumbers, labels: nextLabels, canons: nextCanons, steps: steps + [step])
                 }
             }
         }
     }
 
     let labels = values.map { $0.display }
-    solve(numbers: values, labels: labels, steps: [])
-    return results
+    let canons = labels.map { CanonExpr.leaf($0) }
+    solve(numbers: values, labels: labels, canons: canons, steps: [])
+    return order.compactMap { best[$0]?.1 }
 }
 
 // MARK: - Board Snapshot for Undo
@@ -216,6 +343,7 @@ class GameViewModel: ObservableObject {
     private var timerCancellable: AnyCancellable?
     private var undoStack: [BoardSnapshot] = []
     var allSolutions: [Solution] = []
+    var isMultiplayer = false
 
     var canUndo: Bool { !undoStack.isEmpty && !didWin }
 
@@ -225,6 +353,7 @@ class GameViewModel: ObservableObject {
 
     // Used by multiplayer to set a server-provided puzzle
     func setupMultiplayerRound(numbers: [Int]) {
+        isMultiplayer = true
         let fractions = numbers.map { Fraction($0) }
         initialValues = fractions
         allSolutions = findAllSolutions(values: fractions)
@@ -373,13 +502,17 @@ class GameViewModel: ObservableObject {
                 didWin = true
                 stopTimer()
                 message = ":)"
-                StatsManager.shared.recordSolve(
-                    seconds: elapsedSeconds,
-                    numbers: initialValues.map { $0.num }
-                )
-                Haptics.successDoubleTap()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    withAnimation { self.showCompleted = true }
+                if !isMultiplayer {
+                    StatsManager.shared.recordSolve(
+                        seconds: elapsedSeconds,
+                        numbers: initialValues.map { $0.num }
+                    )
+                    Haptics.successDoubleTap()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        withAnimation { self.showCompleted = true }
+                    }
+                } else {
+                    Haptics.successDoubleTap()
                 }
             } else {
                 message = ":("
@@ -390,7 +523,7 @@ class GameViewModel: ObservableObject {
     
     func revealNextStep() {
         guard let solution = allSolutions.first else { return }
-        if revealedStepCount < solution.count {
+        if revealedStepCount < solution.steps.count {
             showingSolution = true
             revealedStepCount += 1
         }
@@ -398,7 +531,7 @@ class GameViewModel: ObservableObject {
 
     var solutionFullyRevealed: Bool {
         guard let solution = allSolutions.first else { return true }
-        return revealedStepCount >= solution.count
+        return revealedStepCount >= solution.steps.count
     }
 
     func formatValue(_ value: Fraction) -> String {
@@ -588,7 +721,7 @@ struct GameView: View {
             } else {
                 // Show revealed steps
                 SolutionStepsView(
-                    solution: Array((vm.allSolutions.first ?? []).prefix(vm.revealedStepCount))
+                    solution: Array((vm.allSolutions.first?.steps ?? []).prefix(vm.revealedStepCount))
                 )
                 .padding(.horizontal, 32)
             }
@@ -683,16 +816,20 @@ struct CompletedView: View {
                         .foregroundColor(Theme.textMuted)
                         .padding(.horizontal, 32)
 
-                    ForEach(Array(vm.allSolutions.prefix(50).enumerated()), id: \.offset) { idx, solution in
+                    ForEach(Array(vm.allSolutions.prefix(50).enumerated()), id: \.offset) { idx, sol in
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Solution \(idx + 1)")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 12, weight: .bold))
                                 .foregroundColor(Theme.amber)
 
-                            ForEach(Array(solution.enumerated()), id: \.offset) { _, step in
+                            Text(sol.expression)
+                                .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                                .foregroundColor(Theme.brown)
+
+                            ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
                                 Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
-                                    .font(.system(size: 17, weight: .medium, design: .monospaced))
-                                    .foregroundColor(Theme.brown.opacity(0.8))
+                                    .font(.system(size: 15, weight: .medium, design: .monospaced))
+                                    .foregroundColor(Theme.brown.opacity(0.6))
                             }
                         }
                         .padding(16)

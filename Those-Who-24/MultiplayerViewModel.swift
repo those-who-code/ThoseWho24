@@ -128,8 +128,8 @@ class MultiplayerViewModel {
               let gvm = gameVM,
               gvm.didWin else { return }
 
-        let solutionStr = gvm.allSolutions.first.map { steps in
-            steps.map { "\($0.a) \($0.op) \($0.b) = \($0.result)" }.joined(separator: ", ")
+        let solutionStr = gvm.allSolutions.first.map { sol in
+            sol.steps.map { "\($0.a) \($0.op) \($0.b) = \($0.result)" }.joined(separator: ", ")
         } ?? "solved"
 
         do {
