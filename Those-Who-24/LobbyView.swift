@@ -79,6 +79,7 @@ struct LobbyView: View {
                 .padding(4)
                 .background(Theme.cream)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
+                .colorScheme(.light)
                 .padding(.horizontal, 32)
 
                 // Input fields
@@ -90,6 +91,7 @@ struct LobbyView: View {
                         .frame(height: 52)
                         .background(Theme.cream)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .colorScheme(.light)
                         .focused($nameFieldFocused)
                         .submitLabel(.next)
                         .autocorrectionDisabled()
@@ -105,6 +107,7 @@ struct LobbyView: View {
                             .frame(height: 52)
                             .background(Theme.cream)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .colorScheme(.light)
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.characters)
