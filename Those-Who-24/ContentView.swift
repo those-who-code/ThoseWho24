@@ -341,6 +341,7 @@ class GameViewModel: ObservableObject {
 
     private var initialValues: [Fraction] = []
     private var timerCancellable: AnyCancellable?
+    private var startTime: Date?
     private var undoStack: [BoardSnapshot] = []
     var allSolutions: [Solution] = []
     var isMultiplayer = false
@@ -404,6 +405,7 @@ class GameViewModel: ObservableObject {
 
     func startTimer() {
         elapsedSeconds = 0
+        startTime = Date()
         timerCancellable?.cancel()
         timerCancellable = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
@@ -504,7 +506,7 @@ class GameViewModel: ObservableObject {
                 message = ":)"
                 if !isMultiplayer {
                     StatsManager.shared.recordSolve(
-                        seconds: elapsedSeconds,
+                        seconds: startTime.map { Date().timeIntervalSince($0) } ?? Double(elapsedSeconds),
                         numbers: initialValues.map { $0.num }
                     )
                     Haptics.successDoubleTap()

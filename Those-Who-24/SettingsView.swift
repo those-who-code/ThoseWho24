@@ -5,6 +5,8 @@ import SwiftUI
 struct SettingsView: View {
     let onBack: () -> Void
     @ObservedObject private var themeManager = ThemeManager.shared
+    @ObservedObject private var stats = StatsManager.shared
+    @State private var showResetAlert = false
 
     var body: some View {
         ZStack {
@@ -55,9 +57,33 @@ struct SettingsView: View {
                         }
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 12)
+
+                    if stats.lifetimeSolves > 0 {
+                        Button {
+                            Haptics.light()
+                            showResetAlert = true
+                        } label: {
+                            Text("Reset all stats")
+                                .font(.system(size: 15, weight: .medium, design: .rounded))
+                                .foregroundColor(.red.opacity(0.7))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .background(Theme.cream)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 32)
+                    }
                 }
             }
+        }
+        .alert("Reset all stats?", isPresented: $showResetAlert) {
+            Button("Reset", role: .destructive) { stats.reset() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will permanently delete all \(stats.lifetimeSolves) solve records.")
         }
     }
 }
