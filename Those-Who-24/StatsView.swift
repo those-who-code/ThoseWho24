@@ -59,6 +59,16 @@ class StatsManager: ObservableObject {
             : sorted[mid]
     }
 
+    // A solve this far above the median is an interruption, not an attempt.
+    // Median-relative so the rule holds for both fast and slow players.
+    private let outlierMedianMultiple = 5.0
+
+    func withoutOutliers(_ records: [SolveRecord]) -> [SolveRecord] {
+        guard let median = medianSeconds else { return records }
+        let threshold = median * outlierMedianMultiple
+        return records.filter { $0.seconds <= threshold }
+    }
+
     // AoN over most recent N solves
     func averageOf(_ n: Int) -> Double? {
         guard solves.count >= n else { return nil }
@@ -120,14 +130,14 @@ struct StatsView: View {
 
     private var filteredSolves: [SolveRecord] { timeFrame.apply(stats.solves) }
 
-    // Solves before the visible window, used to warm up rolling metrics
-    private var warmupSolves: [SolveRecord] {
-        let display = filteredSolves
-        let all = stats.solves
-        let startIdx = all.count - display.count
-        guard startIdx > 0 else { return [] }
-        let warmupStart = max(0, startIdx - 11)
-        return Array(all[warmupStart..<startIdx])
+    // Trend runs on outlier-free solves; `warmup` is the pre-window context
+    // that primes the rolling metrics and is not itself displayed.
+    private var trendData: (warmup: [SolveRecord], window: [SolveRecord]) {
+        let all = stats.withoutOutliers(stats.solves)
+        let window = timeFrame.apply(all)
+        let startIdx = all.count - window.count
+        guard startIdx > 0 else { return ([], window) }
+        return (Array(all[max(0, startIdx - 11)..<startIdx]), window)
     }
 
     var body: some View {
@@ -231,48 +241,58 @@ struct StatsView: View {
         }
     }
 
-    @ViewBuilder
     private var graphSection: some View {
         VStack(spacing: 10) {
-            // Trend
-            VStack(spacing: 10) {
-                SectionHeader(title: "Trend", subtitle: "Rolling ao12 + IQR spread")
+            trendSection
+            distributionSection
+        }
+    }
 
-                HStack(spacing: 0) {
-                    ForEach(TimeFrame.allCases, id: \.self) { tf in
-                        Button {
-                            Haptics.light()
-                            timeFrame = tf
-                        } label: {
-                            Text(tf.rawValue)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(timeFrame == tf ? Theme.brown : Theme.textMuted)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background(timeFrame == tf ? Theme.cream : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                    }
+    private var timeFramePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(TimeFrame.allCases, id: \.self) { tf in
+                Button {
+                    Haptics.light()
+                    timeFrame = tf
+                } label: {
+                    Text(tf.rawValue)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(timeFrame == tf ? Theme.brown : Theme.textMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(timeFrame == tf ? Theme.cream : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .padding(4)
-                .background(Theme.cardSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Theme.cardSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 24)
+    }
+
+    private var trendSection: some View {
+        let trend = trendData
+
+        return VStack(spacing: 10) {
+            SectionHeader(title: "Trend", subtitle: "Rolling ao12 + IQR spread, outliers excluded")
+
+            timeFramePicker
+
+            RollingTrendChart(warmupSolves: trend.warmup, solves: trend.window)
+                .frame(height: 200)
                 .padding(.horizontal, 24)
+        }
+    }
 
-                RollingTrendChart(warmupSolves: warmupSolves, solves: filteredSolves)
-                    .frame(height: 200)
-                    .padding(.horizontal, 24)
-            }
+    private var distributionSection: some View {
+        VStack(spacing: 10) {
+            SectionHeader(title: "Distribution", subtitle: "Solve count by time bucket")
 
-            // Distribution
-            VStack(spacing: 10) {
-                SectionHeader(title: "Distribution", subtitle: "Solve count by time bucket")
-
-                DistributionChart(solves: filteredSolves)
-                    .frame(height: 140)
-                    .padding(.horizontal, 24)
-            }
+            DistributionChart(solves: filteredSolves)
+                .frame(height: 140)
+                .padding(.horizontal, 24)
         }
     }
 
