@@ -331,7 +331,7 @@ private struct SectionHeader: View {
             if let sub = subtitle {
                 Text(sub)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(Theme.textMuted.opacity(0.7))
+                    .foregroundColor(Theme.textMuted)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

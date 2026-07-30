@@ -18,7 +18,7 @@ struct MultiplayerGameView: View {
                 } label: {
                     Image(systemName: "arrow.left")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .foregroundColor(Theme.textSecondary)
                         .frame(width: 32, height: 32)
                         .background(Theme.cream.opacity(0.7))
                         .clipShape(Circle())
@@ -29,7 +29,7 @@ struct MultiplayerGameView: View {
 
                 Text("Round \(vm.currentRoom?.round ?? 1)")
                     .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundColor(Theme.brown.opacity(0.5))
+                    .foregroundColor(Theme.textSecondary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 6)
                     .background(Theme.cream.opacity(0.7))
@@ -134,10 +134,12 @@ struct ScoreboardView: View {
                 VStack(spacing: 2) {
                     Text("\(player.score)")
                         .font(.system(size: 20, weight: .bold, design: .rounded))
-                        .foregroundColor(isMe ? .white : Theme.brown)
+                        .foregroundColor(isMe ? Theme.accentText : Theme.brown)
                     Text(player.displayName)
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(isMe ? .white.opacity(0.8) : Theme.brown.opacity(0.5))
+                        .foregroundColor(
+                            isMe ? Theme.accentText.opacity(0.85) : Theme.textSecondary
+                        )
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }

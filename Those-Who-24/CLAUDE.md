@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 iOS app — open `Those-Who-24.xcodeproj` (in repo root, one level above this file) in Xcode and build/run normally. There are no tests, no lint config, and no CLI build script.
 
-- Target name: `Those Who 24` (note spaces) · Bundle ID: `alexlu07.Those-Who-24`
+- Target name: `Those Who 24` (note spaces) · Bundle ID: `priscillaye.Those-Who-24`
 - iOS deployment target: 26.2 · Swift 5 · Universal (iPhone + iPad)
 - SwiftPM dependencies: `supabase-swift`, `SwiftDotenv` (resolved by Xcode)
 

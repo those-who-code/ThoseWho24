@@ -628,7 +628,7 @@ struct GameView: View {
                     Text(vm.timerString)
                         .font(.system(size: 16, weight: .semibold, design: .monospaced))
                 }
-                .foregroundColor(Theme.brown.opacity(0.5))
+                .foregroundColor(Theme.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Theme.cream.opacity(0.7))
@@ -643,7 +643,7 @@ struct GameView: View {
                     } label: {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -658,7 +658,7 @@ struct GameView: View {
                     } label: {
                         Image(systemName: "chart.bar.fill")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -677,7 +677,7 @@ struct GameView: View {
                             Text("Multiplayer")
                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                         }
-                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .foregroundColor(Theme.textSecondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Theme.cream.opacity(0.7))
@@ -822,7 +822,7 @@ struct CompletedView: View {
                 Text(vm.timerString)
                     .font(.system(size: 16, weight: .semibold, design: .monospaced))
             }
-            .foregroundColor(Theme.brown.opacity(0.5))
+            .foregroundColor(Theme.textSecondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background(Theme.cream.opacity(0.7))
@@ -840,7 +840,7 @@ struct CompletedView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Solution \(idx + 1)")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(Theme.amber)
+                                .foregroundColor(Theme.textPrimary)
 
                             Text(sol.expression)
                                 .font(.system(size: 16, weight: .semibold, design: .monospaced))
@@ -849,7 +849,7 @@ struct CompletedView: View {
                             ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
                                 Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                     .font(.system(size: 15, weight: .medium, design: .monospaced))
-                                    .foregroundColor(Theme.brown.opacity(0.6))
+                                    .foregroundColor(Theme.textSecondary)
                             }
                         }
                         .padding(16)
@@ -932,14 +932,14 @@ struct SolutionStepsView: View {
                         HStack(spacing: 8) {
                             Text("\(idx + 1)")
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
+                                .foregroundColor(Theme.accentText)
                                 .frame(width: 24, height: 24)
                                 .background(Theme.amber)
                                 .clipShape(Circle())
 
                             Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                 .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Theme.brown.opacity(0.8))
+                                .foregroundColor(Theme.textPrimary)
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     } else {
@@ -983,7 +983,9 @@ struct BottomButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 50)
             .background(filled ? Theme.buttonPrimary : Theme.buttonSecondary.opacity(enabled ? 1 : 0.5))
-            .foregroundColor(filled ? Theme.cardSelectedText : Theme.brown.opacity(enabled ? 1 : 0.35))
+            .foregroundColor(
+                filled ? Theme.cardSelectedText : (enabled ? Theme.textPrimary : Theme.textMuted)
+            )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: Theme.brown.opacity(filled ? 0.15 : 0.05), radius: 4, y: 2)
         }

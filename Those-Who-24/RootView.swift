@@ -14,6 +14,8 @@ enum AppMode {
 struct RootView: View {
     @State private var mode: AppMode = .singlePlayer
     @State private var mpVM = MultiplayerViewModel()
+    @State private var friends = FriendsManager.shared
+    @State private var notifications = PushNotificationManager.shared
     @ObservedObject private var themeManager = ThemeManager.shared
 
     var body: some View {
@@ -39,8 +41,53 @@ struct RootView: View {
                 }
                 .transition(.opacity)
             }
+
+            if friends.state != .ready {
+                SocialGateOverlay(friends: friends)
+                    .zIndex(10)
+            }
         }
+        .preferredColorScheme(themeManager.current.interfaceColorScheme)
         .animation(.easeInOut(duration: 0.2), value: mode)
+        .task {
+            await friends.bootstrap()
+            if mpVM.displayName.isEmpty, let username = friends.username {
+                mpVM.displayName = username
+            }
+            await joinPendingInviteIfPossible()
+        }
+        .onChange(of: friends.username) { _, username in
+            if mpVM.displayName.isEmpty, let username {
+                mpVM.displayName = username
+            }
+        }
+        .onChange(of: friends.state) { _, state in
+            guard state == .ready else { return }
+            Task { await joinPendingInviteIfPossible() }
+        }
+        .onChange(of: notifications.pendingRoomCode) { _, roomCode in
+            guard roomCode != nil else { return }
+            Task { await joinPendingInviteIfPossible() }
+        }
+    }
+
+    private func joinPendingInviteIfPossible() async {
+        guard friends.state == .ready,
+              let roomCode = notifications.pendingRoomCode else { return }
+
+        notifications.consumeRoomInvite()
+        mode = .multiplayer
+
+        guard mpVM.state == .nameEntry else {
+            mpVM.errorMessage = "Leave your current multiplayer room before joining another invite."
+            return
+        }
+
+        if mpVM.displayName.isEmpty, let username = friends.username {
+            mpVM.displayName = username
+        }
+        mpVM.joinCode = roomCode
+        await mpVM.joinRoom()
     }
 }
 
@@ -175,7 +222,7 @@ struct RoundResultOverlay: View {
                     } label: {
                         Image(systemName: "arrow.left")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -190,7 +237,7 @@ struct RoundResultOverlay: View {
                 VStack(spacing: 10) {
                     Image(systemName: didWin ? "star.fill" : "clock.badge.exclamationmark")
                         .font(.system(size: 36))
-                        .foregroundColor(didWin ? Theme.amber : Theme.brown.opacity(0.4))
+                        .foregroundColor(didWin ? Theme.amber : Theme.textSecondary)
 
                     Text(didWin ? "You solved it!" : "\(winnerName) was faster")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -204,7 +251,7 @@ struct RoundResultOverlay: View {
                 if !numbers.isEmpty {
                     Text(computedExpression)
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.brown.opacity(0.7))
+                        .foregroundColor(Theme.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 48)
@@ -212,7 +259,7 @@ struct RoundResultOverlay: View {
 
                     Text(didWin ? "Your solution" : "\(winnerName)'s solution")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.amber)
+                        .foregroundColor(Theme.textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 48)
                         .padding(.bottom, 6)
@@ -234,7 +281,7 @@ struct RoundResultOverlay: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Solution \(idx + 1)")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Theme.amber)
+                                    .foregroundColor(Theme.textPrimary)
 
                                 Text(sol.expression)
                                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
@@ -243,7 +290,7 @@ struct RoundResultOverlay: View {
                                 ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
                                     Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                         .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                        .foregroundColor(Theme.brown.opacity(0.6))
+                                        .foregroundColor(Theme.textSecondary)
                                 }
                             }
                             .padding(12)
@@ -412,7 +459,7 @@ struct DissolvedView: View {
         VStack(spacing: 24) {
             Image(systemName: "leaf.fill")
                 .font(.system(size: 36))
-                .foregroundColor(Theme.warmGreen.opacity(0.5))
+                .foregroundColor(Theme.warmGreen)
 
             Text(reason)
                 .font(.system(size: 18, weight: .medium, design: .rounded))
