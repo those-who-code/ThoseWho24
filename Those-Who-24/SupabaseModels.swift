@@ -80,6 +80,69 @@ struct ProfileRow: Codable, Identifiable {
     }
 }
 
+// MARK: - Daily Puzzle Models
+
+struct DailyPuzzleState: Codable {
+    let puzzleDate: String
+    let numbers: [Int]
+    let startedAt: Date?
+    let completedMilliseconds: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case numbers
+        case puzzleDate = "puzzle_date"
+        case startedAt = "started_at"
+        case completedMilliseconds = "completed_milliseconds"
+    }
+}
+
+struct DailyLeaderboardEntry: Codable, Identifiable {
+    let rank: Int
+    let userId: UUID
+    let username: String
+    let completedMilliseconds: Int
+    let isCurrentUser: Bool
+
+    var id: UUID { userId }
+
+    enum CodingKeys: String, CodingKey {
+        case rank, username
+        case userId = "user_id"
+        case completedMilliseconds = "completed_milliseconds"
+        case isCurrentUser = "is_current_user"
+    }
+}
+
+struct SchoolDailyLeaderboardEntry: Codable, Identifiable {
+    let rank: Int
+    let schoolKey: String
+    let averageMilliseconds: Int
+    let solverCount: Int
+    let isCurrentSchool: Bool
+
+    var id: String { schoolKey }
+
+    enum CodingKeys: String, CodingKey {
+        case rank
+        case schoolKey = "school_key"
+        case averageMilliseconds = "average_milliseconds"
+        case solverCount = "solver_count"
+        case isCurrentSchool = "is_current_school"
+    }
+}
+
+struct UniversityStatus: Codable {
+    let email: String?
+    let schoolKey: String
+    let isVerified: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case schoolKey = "school_key"
+        case isVerified = "is_verified"
+    }
+}
+
 struct FriendConnectionRow: Codable, Identifiable {
     let requestId: UUID
     let userId: UUID
@@ -263,6 +326,30 @@ extension FriendRequestParams: Encodable {
 struct FriendResponseParams: Sendable {
     let requestId: UUID
     let accept: Bool
+}
+
+struct SubmitDailyPuzzleParams: Sendable {
+    let puzzleDate: String
+}
+
+extension SubmitDailyPuzzleParams: Encodable {
+    enum CodingKeys: String, CodingKey { case puzzleDate = "p_puzzle_date" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(puzzleDate, forKey: .puzzleDate)
+    }
+}
+
+struct DailyLeaderboardParams: Sendable {
+    let puzzleDate: String?
+}
+
+extension DailyLeaderboardParams: Encodable {
+    enum CodingKeys: String, CodingKey { case puzzleDate = "p_puzzle_date" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(puzzleDate, forKey: .puzzleDate)
+    }
 }
 
 extension FriendResponseParams: Encodable {

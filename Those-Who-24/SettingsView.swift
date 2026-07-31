@@ -9,6 +9,9 @@ struct SettingsView: View {
     @State private var friends = FriendsManager.shared
     @State private var showResetAlert = false
     @State private var showFriends = false
+    @State private var showUniversity = false
+    @State private var showDailyGame = false
+    @State private var daily = DailyPuzzleManager.shared
 
     var body: some View {
         ZStack {
@@ -41,6 +44,8 @@ struct SettingsView: View {
                 ScrollView {
                     VStack(spacing: 24) {
                         profileSection
+
+                        dailySection
 
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Color Theme")
@@ -85,8 +90,20 @@ struct SettingsView: View {
         .sheet(isPresented: $showFriends) {
             FriendsView(manager: friends)
         }
+        .sheet(isPresented: $showUniversity) {
+            UniversitySettingsView(manager: daily)
+        }
+        .fullScreenCover(isPresented: $showDailyGame) {
+            if let puzzle = daily.puzzle {
+                DailyPuzzleView(puzzle: puzzle) {
+                    showDailyGame = false
+                }
+            }
+        }
         .task {
             await friends.refreshConnections()
+            await daily.refreshUniversity()
+            await daily.refreshTodayStatus()
         }
         .alert("Reset all stats?", isPresented: $showResetAlert) {
             Button("Reset", role: .destructive) { stats.reset() }
@@ -94,6 +111,72 @@ struct SettingsView: View {
         } message: {
             Text("This will permanently delete all \(stats.lifetimeSolves) solve records.")
         }
+    }
+
+    private var dailySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Daily Puzzle")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .foregroundColor(Theme.textSecondary)
+
+            VStack(spacing: 0) {
+                Button {
+                    Haptics.light()
+                    Task {
+                        if await daily.startToday() != nil {
+                            showDailyGame = true
+                        }
+                    }
+                } label: {
+                    settingsRow(
+                        icon: "calendar",
+                        title: daily.hasCompletedToday ? "View Today’s Results" : "Play Today’s Puzzle",
+                        detail: daily.puzzle?.completedMilliseconds == nil ? "" : "Completed"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().opacity(0.3).padding(.leading, 52)
+
+                Button {
+                    Haptics.light()
+                    showUniversity = true
+                } label: {
+                    settingsRow(
+                        icon: daily.university.isVerified ? "checkmark.seal.fill" : "graduationcap.fill",
+                        title: "University Email",
+                        detail: daily.university.isVerified ? daily.university.schoolKey : "Non-school"
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            .background(Theme.cream)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+        }
+        .padding(.horizontal, 24)
+    }
+
+    private func settingsRow(icon: String, title: String, detail: String) -> some View {
+        HStack(spacing: 13) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Theme.amber)
+                .frame(width: 36, height: 36)
+                .background(Theme.amber.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            Text(title)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(Theme.brown)
+            Spacer()
+            Text(detail)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(Theme.textSecondary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(Theme.textMuted)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
     }
 
     private var profileSection: some View {

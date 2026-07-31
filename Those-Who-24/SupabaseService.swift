@@ -260,6 +260,74 @@ final class SupabaseService {
             .value
     }
 
+    // MARK: - Daily Puzzle
+
+    func startDailyPuzzle() async throws -> DailyPuzzleState {
+        try await client.rpc("start_daily_puzzle")
+            .execute()
+            .value
+    }
+
+    func fetchDailyPuzzleStatus() async throws -> DailyPuzzleState {
+        try await client.rpc("get_daily_puzzle_status")
+            .execute()
+            .value
+    }
+
+    func submitDailyPuzzle(puzzleDate: String) async throws -> Int {
+        try await client.rpc(
+            "submit_daily_puzzle",
+            params: SubmitDailyPuzzleParams(puzzleDate: puzzleDate)
+        )
+        .execute()
+        .value
+    }
+
+    func fetchSchoolDailyLeaderboard(puzzleDate: String? = nil) async throws -> [SchoolDailyLeaderboardEntry] {
+        try await client.rpc(
+            "daily_school_averages",
+            params: DailyLeaderboardParams(puzzleDate: puzzleDate)
+        )
+        .execute()
+        .value
+    }
+
+    func fetchFriendsDailyLeaderboard(puzzleDate: String? = nil) async throws -> [DailyLeaderboardEntry] {
+        try await client.rpc(
+            "daily_friends_leaderboard",
+            params: DailyLeaderboardParams(puzzleDate: puzzleDate)
+        )
+        .execute()
+        .value
+    }
+
+    func fetchUniversityStatus() async throws -> UniversityStatus {
+        try await client.rpc("get_university_status")
+            .execute()
+            .value
+    }
+
+    func sendUniversityVerification(to email: String) async throws {
+        _ = try await client.auth.update(user: UserAttributes(email: email))
+    }
+
+    func verifyUniversityEmail(_ email: String, token: String) async throws -> UniversityStatus {
+        _ = try await client.auth.verifyOTP(
+            email: email,
+            token: token,
+            type: .emailChange
+        )
+        return try await client.rpc("sync_university_email")
+            .execute()
+            .value
+    }
+
+    func syncVerifiedUniversityEmail() async throws -> UniversityStatus {
+        try await client.rpc("sync_university_email")
+            .execute()
+            .value
+    }
+
     // MARK: - Friends
 
     func searchProfiles(query: String) async throws -> [FriendSearchResult] {

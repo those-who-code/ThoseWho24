@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - App Mode
 
-enum AppMode {
+enum AppMode: Equatable {
     case singlePlayer
     case multiplayer
     case stats
@@ -16,7 +16,11 @@ struct RootView: View {
     @State private var mpVM = MultiplayerViewModel()
     @State private var friends = FriendsManager.shared
     @State private var notifications = PushNotificationManager.shared
+    @State private var daily = DailyPuzzleManager.shared
+    @State private var showDailyPuzzle = false
+    @State private var isPreparingDailyPuzzle = false
     @ObservedObject private var themeManager = ThemeManager.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -25,7 +29,11 @@ struct RootView: View {
                 ContentView(
                     onMultiplayerTap: { mode = .multiplayer },
                     onStatsTap: { mode = .stats },
-                    onSettingsTap: { mode = .settings }
+                    onSettingsTap: { mode = .settings },
+                    onDailyTap: daily.hasCompletedToday ? nil : {
+                        Task { await openDailyPuzzle() }
+                    },
+                    highlightDailyBanner: daily.isFirstDailyExperience
                 )
                 .transition(.opacity)
             case .stats:
@@ -49,12 +57,20 @@ struct RootView: View {
         }
         .preferredColorScheme(themeManager.current.interfaceColorScheme)
         .animation(.easeInOut(duration: 0.2), value: mode)
+        .fullScreenCover(isPresented: $showDailyPuzzle) {
+            if let puzzle = daily.puzzle {
+                DailyPuzzleView(puzzle: puzzle) {
+                    showDailyPuzzle = false
+                }
+            }
+        }
         .task {
             await friends.bootstrap()
             if mpVM.displayName.isEmpty, let username = friends.username {
                 mpVM.displayName = username
             }
             await joinPendingInviteIfPossible()
+            await refreshDailyPuzzleStatus()
         }
         .onChange(of: friends.username) { _, username in
             if mpVM.displayName.isEmpty, let username {
@@ -63,11 +79,32 @@ struct RootView: View {
         }
         .onChange(of: friends.state) { _, state in
             guard state == .ready else { return }
-            Task { await joinPendingInviteIfPossible() }
+            Task {
+                await joinPendingInviteIfPossible()
+                await refreshDailyPuzzleStatus()
+            }
         }
         .onChange(of: notifications.pendingRoomCode) { _, roomCode in
             guard roomCode != nil else { return }
             Task { await joinPendingInviteIfPossible() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshDailyPuzzleStatus() }
+        }
+    }
+
+    private func refreshDailyPuzzleStatus() async {
+        guard friends.state == .ready else { return }
+        await daily.refreshTodayStatus()
+    }
+
+    private func openDailyPuzzle() async {
+        guard !showDailyPuzzle, !isPreparingDailyPuzzle else { return }
+        isPreparingDailyPuzzle = true
+        defer { isPreparingDailyPuzzle = false }
+        if await daily.startToday() != nil {
+            showDailyPuzzle = true
         }
     }
 
@@ -162,7 +199,7 @@ struct MultiplayerRootView: View {
 
 // MARK: - Shared move type
 
-private struct WinnerMove {
+struct WinnerMove {
     let firstIdx: Int
     let secondIdx: Int
     let op: String
@@ -331,7 +368,7 @@ struct RoundResultOverlay: View {
 
 // MARK: - Animated Card Replay
 
-private struct CardAnimationView: View {
+struct CardAnimationView: View {
     let numbers: [Int]
     let moves: [WinnerMove]
 
