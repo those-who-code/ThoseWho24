@@ -1,6 +1,5 @@
 import Supabase
 import Foundation
-import Auth
 
 // MARK: - Supabase Service
 
@@ -307,23 +306,11 @@ final class SupabaseService {
             .value
     }
 
-    func sendUniversityVerification(to email: String) async throws {
-        _ = try await client.auth.update(user: UserAttributes(email: email))
-    }
-
-    func verifyUniversityEmail(_ email: String, token: String) async throws -> UniversityStatus {
-        _ = try await client.auth.verifyOTP(
-            email: email,
-            token: token,
-            type: .emailChange
+    func selectUniversity(_ schoolKey: String) async throws -> UniversityStatus {
+        try await client.rpc(
+            "set_university",
+            params: SetUniversityParams(schoolKey: schoolKey)
         )
-        return try await client.rpc("sync_university_email")
-            .execute()
-            .value
-    }
-
-    func syncVerifiedUniversityEmail() async throws -> UniversityStatus {
-        try await client.rpc("sync_university_email")
             .execute()
             .value
     }
@@ -396,6 +383,13 @@ final class SupabaseService {
                     roomCode: roomCode
                 )
             )
+        )
+    }
+
+    func sendDailySolveNotification() async {
+        try? await client.functions.invoke(
+            "send-friend-notification",
+            options: .init(body: DailySolveNotificationBody())
         )
     }
 

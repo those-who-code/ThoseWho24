@@ -143,9 +143,9 @@ struct SettingsView: View {
                     showUniversity = true
                 } label: {
                     settingsRow(
-                        icon: daily.university.isVerified ? "checkmark.seal.fill" : "graduationcap.fill",
-                        title: "University Email",
-                        detail: daily.university.isVerified ? daily.university.schoolKey : "Non-school"
+                        icon: daily.university.schoolKey == UniversityCatalog.none.id ? "graduationcap.fill" : "checkmark.circle.fill",
+                        title: "University",
+                        detail: UniversityCatalog.displayName(for: daily.university.schoolKey)
                     )
                 }
                 .buttonStyle(.plain)

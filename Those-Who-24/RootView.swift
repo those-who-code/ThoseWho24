@@ -88,6 +88,10 @@ struct RootView: View {
             guard roomCode != nil else { return }
             Task { await joinPendingInviteIfPossible() }
         }
+        .onChange(of: notifications.pendingDailyPuzzle) { _, isPending in
+            guard isPending else { return }
+            Task { await openPendingDailyPuzzleReminder() }
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await refreshDailyPuzzleStatus() }
@@ -96,7 +100,21 @@ struct RootView: View {
 
     private func refreshDailyPuzzleStatus() async {
         guard friends.state == .ready else { return }
-        await daily.refreshTodayStatus()
+        guard await daily.refreshTodayStatus() else { return }
+        await notifications.scheduleDailyPuzzleReminderIfNeeded(
+            hasCompletedToday: daily.hasCompletedToday,
+            utcDateKey: daily.utcDateKey
+        )
+        if notifications.pendingDailyPuzzle {
+            await openPendingDailyPuzzleReminder()
+        }
+    }
+
+    private func openPendingDailyPuzzleReminder() async {
+        guard friends.state == .ready else { return }
+        notifications.consumeDailyPuzzleReminder()
+        mode = .singlePlayer
+        await openDailyPuzzle()
     }
 
     private func openDailyPuzzle() async {

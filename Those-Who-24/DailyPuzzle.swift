@@ -9,7 +9,7 @@ final class DailyPuzzleManager {
     private(set) var schoolLeaderboard: [SchoolDailyLeaderboardEntry] = []
     private(set) var friendsLeaderboard: [DailyLeaderboardEntry] = []
     private(set) var solution: String?
-    private(set) var university = UniversityStatus(email: nil, schoolKey: "non-school", isVerified: false)
+    private(set) var university = UniversityStatus(schoolKey: UniversityCatalog.none.id)
     private(set) var isLoading = false
     private(set) var isSubmitting = false
     var errorMessage: String?
@@ -53,7 +53,8 @@ final class DailyPuzzleManager {
         }
     }
 
-    func refreshTodayStatus() async {
+    @discardableResult
+    func refreshTodayStatus() async -> Bool {
         do {
             puzzle = try await service.fetchDailyPuzzleStatus()
             if let puzzle {
@@ -62,9 +63,18 @@ final class DailyPuzzleManager {
             if puzzle?.completedMilliseconds != nil {
                 UserDefaults.standard.set(true, forKey: firstCompletionKey)
             }
+            if let puzzle, let milliseconds = puzzle.completedMilliseconds {
+                StatsManager.shared.recordDailySolve(
+                    puzzleDate: puzzle.puzzleDate,
+                    milliseconds: milliseconds,
+                    numbers: puzzle.numbers
+                )
+            }
+            return true
         } catch {
             // Keep the prompt available when status cannot be refreshed. Tapping it
             // retries through startToday(), which surfaces a user-facing error.
+            return false
         }
     }
 
@@ -82,7 +92,14 @@ final class DailyPuzzleManager {
                 completedMilliseconds: milliseconds
             )
             storeSolution(solution, for: puzzle.puzzleDate)
+            StatsManager.shared.recordDailySolve(
+                puzzleDate: puzzle.puzzleDate,
+                milliseconds: milliseconds,
+                numbers: puzzle.numbers
+            )
             UserDefaults.standard.set(true, forKey: firstCompletionKey)
+            PushNotificationManager.shared.cancelDailyPuzzleReminder()
+            Task { await service.sendDailySolveNotification() }
             await refreshLeaderboard(for: puzzle.puzzleDate)
             return true
         } catch {
@@ -112,60 +129,18 @@ final class DailyPuzzleManager {
         }
     }
 
-    func sendVerification(email rawEmail: String) async -> Bool {
-        let email = rawEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard Self.isAcademicEmail(email) else {
-            errorMessage = "Enter a university email such as name@school.edu."
-            return false
-        }
+    func selectUniversity(_ option: UniversityOption) async -> Bool {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
         do {
-            try await service.sendUniversityVerification(to: email)
-            return true
-        } catch {
-            errorMessage = error.localizedDescription
-            return false
-        }
-    }
-
-    func verify(email: String, code: String) async -> Bool {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            university = try await service.verifyUniversityEmail(
-                email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
-                token: code.trimmingCharacters(in: .whitespacesAndNewlines)
-            )
+            university = try await service.selectUniversity(option.id)
             await refreshLeaderboard()
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
-    }
-
-    func syncVerifiedEmail() async -> Bool {
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            university = try await service.syncVerifiedUniversityEmail()
-            await refreshLeaderboard()
-            return true
-        } catch {
-            errorMessage = "Open the verification email first, then try again."
-            return false
-        }
-    }
-
-    private static func isAcademicEmail(_ email: String) -> Bool {
-        guard let domain = email.split(separator: "@").last.map(String.init) else { return false }
-        return domain.hasSuffix(".edu") ||
-            domain.range(of: #"\.ac\.[a-z]{2}$"#, options: .regularExpression) != nil ||
-            domain.range(of: #"\.edu\.[a-z]{2}$"#, options: .regularExpression) != nil
     }
 
     private func loadSolution(for puzzleDate: String) {
@@ -254,7 +229,7 @@ struct DailyPuzzleView: View {
                             showResults = true
                         }
                         showConfetti = true
-                        try? await Task.sleep(for: .seconds(1.35))
+                        try? await Task.sleep(for: .seconds(1.75))
                         showConfetti = false
                     }
                 }
@@ -274,26 +249,22 @@ struct DailyPuzzleView: View {
 
 private struct DailyConfettiView: View {
     @State private var didPop = false
+    private let pieceCount = 72
 
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                ForEach(0..<58, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: index.isMultiple(of: 3) ? 5 : 1)
-                        .fill(confettiColor(index))
-                        .frame(
-                            width: index.isMultiple(of: 4) ? 7 : 10,
-                            height: index.isMultiple(of: 3) ? 10 : 6
-                        )
-                        .rotationEffect(.degrees(didPop ? Double(index * 83 + 360) : Double(index * 17)))
+                ForEach(0..<pieceCount, id: \.self) { index in
+                    confettiPiece(index)
+                        .rotationEffect(.degrees(didPop ? Double(index * 91 + 480) : Double(index * 17)))
                         .position(
                             x: popX(index, size: geometry.size),
                             y: popY(index, size: geometry.size)
                         )
                         .opacity(didPop ? 0 : 1)
                         .animation(
-                            .easeOut(duration: 0.9 + Double(index % 5) * 0.08)
-                                .delay(Double(index % 8) * 0.018),
+                            .easeOut(duration: 1.15 + Double(index % 6) * 0.08)
+                                .delay(Double(index % 10) * 0.015),
                             value: didPop
                         )
                 }
@@ -307,22 +278,54 @@ private struct DailyConfettiView: View {
 
     private func popX(_ index: Int, size: CGSize) -> CGFloat {
         guard didPop else { return size.width / 2 }
-        let angle = Double(index) / 58 * Double.pi * 2
-        let distance = CGFloat(105 + (index * 37) % 145)
+        let angle = Double(index) / Double(pieceCount) * Double.pi * 2
+        let distance = CGFloat(145 + (index * 47) % 210)
         return size.width / 2 + CGFloat(cos(angle)) * distance
     }
 
     private func popY(_ index: Int, size: CGSize) -> CGFloat {
         let origin = min(size.height * 0.23, 220)
         guard didPop else { return origin }
-        let angle = Double(index) / 58 * Double.pi * 2
-        let distance = CGFloat(95 + (index * 29) % 125)
-        return origin + CGFloat(sin(angle)) * distance + 34
+        let angle = Double(index) / Double(pieceCount) * Double.pi * 2
+        let distance = CGFloat(125 + (index * 39) % 190)
+        return origin + CGFloat(sin(angle)) * distance + 70
+    }
+
+    @ViewBuilder
+    private func confettiPiece(_ index: Int) -> some View {
+        if index.isMultiple(of: 11) {
+            Circle()
+                .stroke(confettiColor(index), lineWidth: 2.5)
+                .frame(
+                    width: CGFloat(30 + (index % 3) * 10),
+                    height: CGFloat(30 + (index % 3) * 10)
+                )
+        } else if index.isMultiple(of: 5) {
+            Circle()
+                .fill(confettiColor(index))
+                .frame(width: 14, height: 14)
+        } else {
+            RoundedRectangle(cornerRadius: index.isMultiple(of: 3) ? 4 : 1.5)
+                .fill(confettiColor(index))
+                .frame(
+                    width: index.isMultiple(of: 4) ? 12 : 18,
+                    height: index.isMultiple(of: 3) ? 20 : 9
+                )
+        }
     }
 
     private func confettiColor(_ index: Int) -> Color {
-        if index.isMultiple(of: 5) { return Theme.amber }
-        return Theme.cardColors[index % Theme.cardColors.count]
+        let celebrationColors: [Color] = [
+            .pink,
+            .cyan,
+            .blue,
+            .green,
+            .yellow,
+            .orange,
+            .purple,
+            .red
+        ]
+        return celebrationColors[index % celebrationColors.count]
     }
 }
 
@@ -410,12 +413,20 @@ struct DailyResultsView: View {
                     .padding(24)
                 }
             }
-            .navigationTitle("Daily Results")
+            .navigationTitle("ThoseWho24")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { onDone() }
-                        .foregroundColor(Theme.brown)
+                    Button(action: onDone) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Theme.brown)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.cream)
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Close daily results")
                 }
             }
         }
@@ -476,7 +487,7 @@ struct DailyResultsView: View {
                     HStack(spacing: 12) {
                         rankLabel(entry.rank)
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(entry.schoolKey == "non-school" ? "Non-school" : entry.schoolKey)
+                            Text(UniversityCatalog.displayName(for: entry.schoolKey))
                                 .font(.system(size: 16, weight: entry.isCurrentSchool ? .bold : .semibold, design: .rounded))
                                 .foregroundColor(Theme.brown)
                             Text("\(entry.solverCount) solver\(entry.solverCount == 1 ? "" : "s")")
@@ -511,9 +522,20 @@ struct DailyResultsView: View {
                 ForEach(manager.friendsLeaderboard) { entry in
                     HStack(spacing: 12) {
                         rankLabel(entry.rank)
-                        Text("@\(entry.username)")
-                            .font(.system(size: 16, weight: entry.isCurrentUser ? .bold : .semibold, design: .rounded))
-                            .foregroundColor(Theme.brown)
+                        if entry.isCurrentUser {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("You")
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .foregroundColor(Theme.brown)
+                                Text("@\(entry.username)")
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                        } else {
+                            Text("@\(entry.username)")
+                                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(Theme.brown)
+                        }
                         Spacer()
                         Text(format(milliseconds: entry.completedMilliseconds))
                             .font(.system(size: 15, weight: .semibold, design: .monospaced))
@@ -563,92 +585,59 @@ struct DailyResultsView: View {
 struct UniversitySettingsView: View {
     @Bindable var manager: DailyPuzzleManager
     @Environment(\.dismiss) private var dismiss
-    @State private var email = ""
-    @State private var code = ""
-    @State private var codeSent = false
+    @State private var searchText = ""
+
+    private var options: [UniversityOption] {
+        let all = [UniversityCatalog.none] + UniversityCatalog.universities
+        guard !searchText.isEmpty else { return all }
+        return all.filter { $0.matches(searchText) }
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
                 Theme.backgroundGradient.ignoresSafeArea()
-                VStack(alignment: .leading, spacing: 18) {
-                    Text("Use your university email so your solve contributes to your school’s daily average.")
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Choose a university so your solve contributes to its daily average. No email or verification is required.")
                         .font(.system(size: 15, design: .rounded))
                         .foregroundColor(Theme.textSecondary)
 
-                    if manager.university.isVerified {
-                        HStack(spacing: 12) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 24))
-                                .foregroundColor(Theme.amber)
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(manager.university.schoolKey)
-                                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                                    .foregroundColor(Theme.brown)
-                                Text(manager.university.email ?? "")
-                                    .font(.system(size: 13, design: .rounded))
-                                    .foregroundColor(Theme.textSecondary)
-                            }
-                        }
-                        .padding(18)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Theme.cream)
-                        .clipShape(RoundedRectangle(cornerRadius: 18))
-                    } else {
-                        TextField("name@university.edu", text: $email)
-                            .textInputAutocapitalization(.never)
-                            .keyboardType(.emailAddress)
-                            .autocorrectionDisabled()
-                            .padding(15)
-                            .background(Theme.cream)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                        if codeSent {
-                            Text("Check your inbox for a verification code or link.")
-                                .font(.system(size: 13, design: .rounded))
-                                .foregroundColor(Theme.textSecondary)
-
-                            TextField("Verification code", text: $code)
-                                .keyboardType(.numberPad)
-                                .textContentType(.oneTimeCode)
-                                .padding(15)
-                                .background(Theme.cream)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                        }
-
-                        Button {
-                            Task {
-                                if codeSent {
-                                    if await manager.verify(email: email, code: code) { dismiss() }
-                                } else if await manager.sendVerification(email: email) {
-                                    codeSent = true
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(options) { option in
+                                Button {
+                                    Task {
+                                        if await manager.selectUniversity(option) { dismiss() }
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: option.id == UniversityCatalog.none.id ? "person.fill" : "graduationcap.fill")
+                                            .foregroundColor(Theme.amber)
+                                            .frame(width: 24)
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(option.name)
+                                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                                .foregroundColor(Theme.brown)
+                                                .multilineTextAlignment(.leading)
+                                            if !option.location.isEmpty {
+                                                Text(option.location)
+                                                    .font(.system(size: 12, design: .rounded))
+                                                    .foregroundColor(Theme.textSecondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        if manager.university.schoolKey == option.id {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(Theme.amber)
+                                        }
+                                    }
+                                    .padding(14)
+                                    .background(Theme.cream)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
                                 }
+                                .buttonStyle(.plain)
+                                .disabled(manager.isLoading)
                             }
-                        } label: {
-                            Text(codeSent ? "Verify Email" : "Send Verification Code")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 52)
-                                .background(Theme.buttonPrimary)
-                                .foregroundColor(Theme.cardSelectedText)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                        }
-                        .disabled(manager.isLoading || (codeSent && code.isEmpty))
-                        .buttonStyle(.plain)
-
-                        if codeSent {
-                            Button {
-                                Task {
-                                    if await manager.syncVerifiedEmail() { dismiss() }
-                                }
-                            } label: {
-                                Text("I verified with the email link")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Theme.brown)
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .disabled(manager.isLoading)
-                            .buttonStyle(.plain)
                         }
                     }
 
@@ -661,8 +650,9 @@ struct UniversitySettingsView: View {
                 }
                 .padding(24)
             }
-            .navigationTitle("University Email")
+            .navigationTitle("University")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "Search name, state, or country")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
@@ -672,7 +662,6 @@ struct UniversitySettingsView: View {
         }
         .task {
             await manager.refreshUniversity()
-            email = manager.university.email ?? email
         }
     }
 }

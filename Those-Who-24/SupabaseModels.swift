@@ -132,14 +132,23 @@ struct SchoolDailyLeaderboardEntry: Codable, Identifiable {
 }
 
 struct UniversityStatus: Codable {
-    let email: String?
     let schoolKey: String
-    let isVerified: Bool
 
     enum CodingKeys: String, CodingKey {
-        case email
         case schoolKey = "school_key"
-        case isVerified = "is_verified"
+    }
+}
+
+struct SetUniversityParams: Encodable, Sendable {
+    let schoolKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case schoolKey = "p_school_key"
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schoolKey, forKey: .schoolKey)
     }
 }
 
@@ -374,6 +383,10 @@ struct RoomInviteNotificationBody: Sendable {
     let roomCode: String
 }
 
+struct DailySolveNotificationBody: Sendable {
+    let kind = "daily_puzzle_solved"
+}
+
 struct RegisterDeviceTokenParams: Sendable {
     let token: String
     let environment: String
@@ -412,6 +425,14 @@ extension RoomInviteNotificationBody: Encodable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(recipientId, forKey: .recipientId)
         try c.encode(roomCode, forKey: .roomCode)
+    }
+}
+
+extension DailySolveNotificationBody: Encodable {
+    enum CodingKeys: String, CodingKey { case kind }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(kind, forKey: .kind)
     }
 }
 
