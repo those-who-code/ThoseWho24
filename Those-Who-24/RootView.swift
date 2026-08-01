@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - App Mode
 
-enum AppMode {
+enum AppMode: Equatable {
     case singlePlayer
     case multiplayer
     case stats
@@ -14,7 +14,13 @@ enum AppMode {
 struct RootView: View {
     @State private var mode: AppMode = .singlePlayer
     @State private var mpVM = MultiplayerViewModel()
+    @State private var friends = FriendsManager.shared
+    @State private var notifications = PushNotificationManager.shared
+    @State private var daily = DailyPuzzleManager.shared
+    @State private var showDailyPuzzle = false
+    @State private var isPreparingDailyPuzzle = false
     @ObservedObject private var themeManager = ThemeManager.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
@@ -23,7 +29,11 @@ struct RootView: View {
                 ContentView(
                     onMultiplayerTap: { mode = .multiplayer },
                     onStatsTap: { mode = .stats },
-                    onSettingsTap: { mode = .settings }
+                    onSettingsTap: { mode = .settings },
+                    onDailyTap: daily.hasCompletedToday ? nil : {
+                        Task { await openDailyPuzzle() }
+                    },
+                    highlightDailyBanner: daily.isFirstDailyExperience
                 )
                 .transition(.opacity)
             case .stats:
@@ -39,8 +49,100 @@ struct RootView: View {
                 }
                 .transition(.opacity)
             }
+
+            if friends.state != .ready {
+                SocialGateOverlay(friends: friends)
+                    .zIndex(10)
+            }
         }
+        .preferredColorScheme(themeManager.current.interfaceColorScheme)
         .animation(.easeInOut(duration: 0.2), value: mode)
+        .fullScreenCover(isPresented: $showDailyPuzzle) {
+            if let puzzle = daily.puzzle {
+                DailyPuzzleView(puzzle: puzzle) {
+                    showDailyPuzzle = false
+                }
+            }
+        }
+        .task {
+            await friends.bootstrap()
+            if mpVM.displayName.isEmpty, let username = friends.username {
+                mpVM.displayName = username
+            }
+            await joinPendingInviteIfPossible()
+            await refreshDailyPuzzleStatus()
+        }
+        .onChange(of: friends.username) { _, username in
+            if mpVM.displayName.isEmpty, let username {
+                mpVM.displayName = username
+            }
+        }
+        .onChange(of: friends.state) { _, state in
+            guard state == .ready else { return }
+            Task {
+                await joinPendingInviteIfPossible()
+                await refreshDailyPuzzleStatus()
+            }
+        }
+        .onChange(of: notifications.pendingRoomCode) { _, roomCode in
+            guard roomCode != nil else { return }
+            Task { await joinPendingInviteIfPossible() }
+        }
+        .onChange(of: notifications.pendingDailyPuzzle) { _, isPending in
+            guard isPending else { return }
+            Task { await openPendingDailyPuzzleReminder() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshDailyPuzzleStatus() }
+        }
+    }
+
+    private func refreshDailyPuzzleStatus() async {
+        guard friends.state == .ready else { return }
+        guard await daily.refreshTodayStatus() else { return }
+        await notifications.scheduleDailyPuzzleReminderIfNeeded(
+            hasCompletedToday: daily.hasCompletedToday,
+            utcDateKey: daily.utcDateKey
+        )
+        if notifications.pendingDailyPuzzle {
+            await openPendingDailyPuzzleReminder()
+        }
+    }
+
+    private func openPendingDailyPuzzleReminder() async {
+        guard friends.state == .ready else { return }
+        notifications.consumeDailyPuzzleReminder()
+        mode = .singlePlayer
+        await openDailyPuzzle()
+    }
+
+    private func openDailyPuzzle() async {
+        guard !showDailyPuzzle, !isPreparingDailyPuzzle else { return }
+        isPreparingDailyPuzzle = true
+        defer { isPreparingDailyPuzzle = false }
+        if await daily.startToday() != nil {
+            showDailyPuzzle = true
+        }
+    }
+
+    private func joinPendingInviteIfPossible() async {
+        guard friends.state == .ready,
+              let roomCode = notifications.pendingRoomCode else { return }
+
+        notifications.consumeRoomInvite()
+        mode = .multiplayer
+
+        guard mpVM.state == .nameEntry else {
+            mpVM.errorMessage = "Leave your current multiplayer room before joining another invite."
+            return
+        }
+
+        if mpVM.displayName.isEmpty, let username = friends.username {
+            mpVM.displayName = username
+        }
+        mpVM.joinCode = roomCode
+        await mpVM.joinRoom()
     }
 }
 
@@ -115,7 +217,7 @@ struct MultiplayerRootView: View {
 
 // MARK: - Shared move type
 
-private struct WinnerMove {
+struct WinnerMove {
     let firstIdx: Int
     let secondIdx: Int
     let op: String
@@ -175,7 +277,7 @@ struct RoundResultOverlay: View {
                     } label: {
                         Image(systemName: "arrow.left")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -190,7 +292,7 @@ struct RoundResultOverlay: View {
                 VStack(spacing: 10) {
                     Image(systemName: didWin ? "star.fill" : "clock.badge.exclamationmark")
                         .font(.system(size: 36))
-                        .foregroundColor(didWin ? Theme.amber : Theme.brown.opacity(0.4))
+                        .foregroundColor(didWin ? Theme.amber : Theme.textSecondary)
 
                     Text(didWin ? "You solved it!" : "\(winnerName) was faster")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -204,7 +306,7 @@ struct RoundResultOverlay: View {
                 if !numbers.isEmpty {
                     Text(computedExpression)
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.brown.opacity(0.7))
+                        .foregroundColor(Theme.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 48)
@@ -212,7 +314,7 @@ struct RoundResultOverlay: View {
 
                     Text(didWin ? "Your solution" : "\(winnerName)'s solution")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.amber)
+                        .foregroundColor(Theme.textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 48)
                         .padding(.bottom, 6)
@@ -234,7 +336,7 @@ struct RoundResultOverlay: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Solution \(idx + 1)")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Theme.amber)
+                                    .foregroundColor(Theme.textPrimary)
 
                                 Text(sol.expression)
                                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
@@ -243,7 +345,7 @@ struct RoundResultOverlay: View {
                                 ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
                                     Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                         .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                        .foregroundColor(Theme.brown.opacity(0.6))
+                                        .foregroundColor(Theme.textSecondary)
                                 }
                             }
                             .padding(12)
@@ -284,7 +386,7 @@ struct RoundResultOverlay: View {
 
 // MARK: - Animated Card Replay
 
-private struct CardAnimationView: View {
+struct CardAnimationView: View {
     let numbers: [Int]
     let moves: [WinnerMove]
 
@@ -412,7 +514,7 @@ struct DissolvedView: View {
         VStack(spacing: 24) {
             Image(systemName: "leaf.fill")
                 .font(.system(size: 36))
-                .foregroundColor(Theme.warmGreen.opacity(0.5))
+                .foregroundColor(Theme.warmGreen)
 
             Text(reason)
                 .font(.system(size: 18, weight: .medium, design: .rounded))

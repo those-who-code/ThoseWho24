@@ -10,14 +10,24 @@ struct SolveRecord: Codable, Identifiable {
     let numbers: [Int]
 }
 
+struct DailySolveRecord: Codable, Identifiable {
+    var id: String { puzzleDate }
+    let puzzleDate: String
+    let completedAt: Date
+    let seconds: Double
+    let numbers: [Int]
+}
+
 // MARK: - Stats Manager
 
 class StatsManager: ObservableObject {
     static let shared = StatsManager()
 
     @Published private(set) var solves: [SolveRecord] = []
+    @Published private(set) var dailySolves: [DailySolveRecord] = []
 
     private let key = "solveRecords"
+    private let dailyKey = "dailySolveRecords"
 
     private init() { load() }
 
@@ -27,9 +37,23 @@ class StatsManager: ObservableObject {
         save()
     }
 
+    func recordDailySolve(puzzleDate: String, milliseconds: Int, numbers: [Int]) {
+        guard !dailySolves.contains(where: { $0.puzzleDate == puzzleDate }) else { return }
+        dailySolves.append(DailySolveRecord(
+            puzzleDate: puzzleDate,
+            completedAt: Date(),
+            seconds: Double(milliseconds) / 1000,
+            numbers: numbers
+        ))
+        dailySolves.sort { $0.puzzleDate < $1.puzzleDate }
+        saveDailySolves()
+    }
+
     func reset() {
         solves = []
+        dailySolves = []
         UserDefaults.standard.removeObject(forKey: key)
+        UserDefaults.standard.removeObject(forKey: dailyKey)
     }
 
     var lifetimeSolves: Int { solves.count }
@@ -57,6 +81,63 @@ class StatsManager: ObservableObject {
         return sorted.count % 2 == 0
             ? (sorted[mid - 1] + sorted[mid]) / 2.0
             : sorted[mid]
+    }
+
+    var dailyAverageSeconds: Double? {
+        guard !dailySolves.isEmpty else { return nil }
+        return dailySolves.reduce(0) { $0 + $1.seconds } / Double(dailySolves.count)
+    }
+
+    var currentDailyStreak: Int {
+        let dates = Set(dailySolves.compactMap { Self.utcDate(from: $0.puzzleDate) })
+        guard !dates.isEmpty else { return 0 }
+        let calendar = Self.utcCalendar
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
+        let start: Date
+        if dates.contains(today) {
+            start = today
+        } else if dates.contains(yesterday) {
+            start = yesterday
+        } else {
+            return 0
+        }
+
+        var streak = 0
+        var cursor = start
+        while dates.contains(cursor) {
+            streak += 1
+            cursor = calendar.date(byAdding: .day, value: -1, to: cursor)!
+        }
+        return streak
+    }
+
+    var longestDailyStreak: Int {
+        let sortedDates = Set(dailySolves.compactMap { Self.utcDate(from: $0.puzzleDate) }).sorted()
+        guard !sortedDates.isEmpty else { return 0 }
+        let calendar = Self.utcCalendar
+        var longest = 1
+        var run = 1
+        for index in 1..<sortedDates.count {
+            let expected = calendar.date(byAdding: .day, value: 1, to: sortedDates[index - 1])!
+            if sortedDates[index] == expected {
+                run += 1
+                longest = max(longest, run)
+            } else {
+                run = 1
+            }
+        }
+        return longest
+    }
+
+    // A solve this far above the median is an interruption, not an attempt.
+    // Median-relative so the rule holds for both fast and slow players.
+    private let outlierMedianMultiple = 5.0
+
+    func withoutOutliers(_ records: [SolveRecord]) -> [SolveRecord] {
+        guard let median = medianSeconds else { return records }
+        let threshold = median * outlierMedianMultiple
+        return records.filter { $0.seconds <= threshold }
     }
 
     // AoN over most recent N solves
@@ -89,10 +170,41 @@ class StatsManager: ObservableObject {
         }
     }
 
+    private func saveDailySolves() {
+        if let data = try? JSONEncoder().encode(dailySolves) {
+            UserDefaults.standard.set(data, forKey: dailyKey)
+        }
+    }
+
     private func load() {
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([SolveRecord].self, from: data) else { return }
+              let decoded = try? JSONDecoder().decode([SolveRecord].self, from: data) else {
+            loadDailySolves()
+            return
+        }
         solves = decoded
+        loadDailySolves()
+    }
+
+    private func loadDailySolves() {
+        guard let data = UserDefaults.standard.data(forKey: dailyKey),
+              let decoded = try? JSONDecoder().decode([DailySolveRecord].self, from: data) else { return }
+        dailySolves = decoded.sorted { $0.puzzleDate < $1.puzzleDate }
+    }
+
+    fileprivate static var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
+    }
+
+    fileprivate static func utcDate(from key: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = utcCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: key)
     }
 }
 
@@ -120,14 +232,14 @@ struct StatsView: View {
 
     private var filteredSolves: [SolveRecord] { timeFrame.apply(stats.solves) }
 
-    // Solves before the visible window, used to warm up rolling metrics
-    private var warmupSolves: [SolveRecord] {
-        let display = filteredSolves
-        let all = stats.solves
-        let startIdx = all.count - display.count
-        guard startIdx > 0 else { return [] }
-        let warmupStart = max(0, startIdx - 11)
-        return Array(all[warmupStart..<startIdx])
+    // Trend runs on outlier-free solves; `warmup` is the pre-window context
+    // that primes the rolling metrics and is not itself displayed.
+    private var trendData: (warmup: [SolveRecord], window: [SolveRecord]) {
+        let all = stats.withoutOutliers(stats.solves)
+        let window = timeFrame.apply(all)
+        let startIdx = all.count - window.count
+        guard startIdx > 0 else { return ([], window) }
+        return (Array(all[max(0, startIdx - 11)..<startIdx]), window)
     }
 
     var body: some View {
@@ -164,6 +276,7 @@ struct StatsView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
+                        dailyPuzzleSection
                         allTimeSection
                         if stats.solves.count >= 5 {
                             recentSection
@@ -179,6 +292,34 @@ struct StatsView: View {
     }
 
     // MARK: - Sections
+
+    private var dailyPuzzleSection: some View {
+        VStack(spacing: 10) {
+            SectionHeader(title: "Daily Puzzle", subtitle: "Saved locally · streaks use UTC days")
+
+            HStack(spacing: 10) {
+                StatCard(value: "\(stats.currentDailyStreak)", label: "Current streak")
+                StatCard(value: "\(stats.longestDailyStreak)", label: "Longest streak")
+                StatCard(value: "\(stats.dailySolves.count)", label: "Daily solves")
+            }
+            .padding(.horizontal, 24)
+
+            HStack(spacing: 10) {
+                StatCard(
+                    value: stats.dailyAverageSeconds.map { formatSecs($0) } ?? "—",
+                    label: "Average time"
+                )
+                StatCard(
+                    value: stats.dailySolves.map(\.seconds).min().map { formatSecs($0) } ?? "—",
+                    label: "Best daily"
+                )
+            }
+            .padding(.horizontal, 24)
+
+            DailySolveHeatmap(records: stats.dailySolves)
+                .padding(.horizontal, 24)
+        }
+    }
 
     @ViewBuilder
     private var allTimeSection: some View {
@@ -231,48 +372,58 @@ struct StatsView: View {
         }
     }
 
-    @ViewBuilder
     private var graphSection: some View {
         VStack(spacing: 10) {
-            // Trend
-            VStack(spacing: 10) {
-                SectionHeader(title: "Trend", subtitle: "Rolling ao12 + IQR spread")
+            trendSection
+            distributionSection
+        }
+    }
 
-                HStack(spacing: 0) {
-                    ForEach(TimeFrame.allCases, id: \.self) { tf in
-                        Button {
-                            Haptics.light()
-                            timeFrame = tf
-                        } label: {
-                            Text(tf.rawValue)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .foregroundColor(timeFrame == tf ? Theme.brown : Theme.textMuted)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background(timeFrame == tf ? Theme.cream : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                    }
+    private var timeFramePicker: some View {
+        HStack(spacing: 0) {
+            ForEach(TimeFrame.allCases, id: \.self) { tf in
+                Button {
+                    Haptics.light()
+                    timeFrame = tf
+                } label: {
+                    Text(tf.rawValue)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundColor(timeFrame == tf ? Theme.brown : Theme.textMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(timeFrame == tf ? Theme.cream : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
-                .padding(4)
-                .background(Theme.cardSurface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(4)
+        .background(Theme.cardSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 24)
+    }
+
+    private var trendSection: some View {
+        let trend = trendData
+
+        return VStack(spacing: 10) {
+            SectionHeader(title: "Trend", subtitle: "Rolling ao12 + IQR spread, outliers excluded")
+
+            timeFramePicker
+
+            RollingTrendChart(warmupSolves: trend.warmup, solves: trend.window)
+                .frame(height: 200)
                 .padding(.horizontal, 24)
+        }
+    }
 
-                RollingTrendChart(warmupSolves: warmupSolves, solves: filteredSolves)
-                    .frame(height: 200)
-                    .padding(.horizontal, 24)
-            }
+    private var distributionSection: some View {
+        VStack(spacing: 10) {
+            SectionHeader(title: "Distribution", subtitle: "Solve count by time bucket")
 
-            // Distribution
-            VStack(spacing: 10) {
-                SectionHeader(title: "Distribution", subtitle: "Solve count by time bucket")
-
-                DistributionChart(solves: filteredSolves)
-                    .frame(height: 140)
-                    .padding(.horizontal, 24)
-            }
+            DistributionChart(solves: filteredSolves)
+                .frame(height: 140)
+                .padding(.horizontal, 24)
         }
     }
 
@@ -296,6 +447,139 @@ struct StatsView: View {
     }
 }
 
+// MARK: - Daily Solve Heatmap
+
+private struct DailySolveHeatmap: View {
+    let records: [DailySolveRecord]
+
+    private struct DayBlock: Identifiable {
+        let date: Date
+        let seconds: Double?
+        var id: Date { date }
+    }
+
+    private let weekCount = 14
+
+    private var weeks: [[DayBlock]] {
+        let calendar = StatsManager.utcCalendar
+        let today = calendar.startOfDay(for: Date())
+        let timesByDate = Dictionary(uniqueKeysWithValues: records.compactMap { record in
+            StatsManager.utcDate(from: record.puzzleDate).map { ($0, record.seconds) }
+        })
+        let daysSinceMonday = (calendar.component(.weekday, from: today) + 5) % 7
+        guard let currentMonday = calendar.date(byAdding: .day, value: -daysSinceMonday, to: today),
+              let firstMonday = calendar.date(
+                byAdding: .day,
+                value: -(weekCount - 1) * 7,
+                to: currentMonday
+              ) else { return [] }
+
+        return (0..<weekCount).map { week in
+            (0..<7).compactMap { weekday in
+                guard let date = calendar.date(
+                    byAdding: .day,
+                    value: week * 7 + weekday,
+                    to: firstMonday
+                ) else { return nil }
+                return DayBlock(date: date, seconds: timesByDate[date])
+            }
+        }
+    }
+
+    var body: some View {
+        let data = weeks
+        let allBlocks = data.flatMap { $0 }
+        let solvedTimes = allBlocks.compactMap(\.seconds)
+        let average = solvedTimes.isEmpty
+            ? 1
+            : solvedTimes.reduce(0, +) / Double(solvedTimes.count)
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("LAST 14 WEEKS · UTC")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(Theme.textMuted)
+                    .tracking(0.6)
+                Spacer()
+                if let first = allBlocks.first?.date, let last = allBlocks.last?.date {
+                    Text(monthRange(first, last))
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundColor(Theme.textMuted)
+                }
+            }
+
+            HStack(alignment: .top, spacing: 4) {
+                ForEach(Array(data.enumerated()), id: \.offset) { _, week in
+                    VStack(spacing: 4) {
+                        ForEach(week) { day in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(blockColor(day, average: average))
+                                .frame(maxWidth: .infinity)
+                                .aspectRatio(1, contentMode: .fit)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 3)
+                                        .stroke(
+                                            isToday(day.date) ? Theme.amber : Color.clear,
+                                            lineWidth: 1.5
+                                        )
+                                )
+                                .opacity(isFuture(day.date) ? 0.35 : 1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.cardSurface)
+                    .frame(width: 10, height: 10)
+                Text("Missed")
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Theme.amber.opacity(0.75))
+                    .frame(width: 10, height: 10)
+                Text("Solved")
+                Spacer()
+                Text("\(solvedTimes.count) in view")
+            }
+            .font(.system(size: 9, weight: .medium, design: .rounded))
+            .foregroundColor(Theme.textMuted)
+        }
+        .padding(14)
+        .background(Theme.cream)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Daily solve streak for the last 14 UTC weeks")
+        .accessibilityValue("\(solvedTimes.count) completed")
+    }
+
+    private func blockColor(_ day: DayBlock, average: Double) -> Color {
+        guard let seconds = day.seconds else { return Theme.cardSurface }
+        if seconds <= average * 0.75 { return Theme.amber }
+        if seconds <= average { return Theme.amber.opacity(0.78) }
+        return Theme.amber.opacity(0.55)
+    }
+
+    private func isToday(_ date: Date) -> Bool {
+        StatsManager.utcCalendar.isDate(date, inSameDayAs: Date())
+    }
+
+    private func isFuture(_ date: Date) -> Bool {
+        date > StatsManager.utcCalendar.startOfDay(for: Date())
+    }
+
+    private func monthRange(_ first: Date, _ last: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = StatsManager.utcCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "MMM"
+        let firstMonth = formatter.string(from: first)
+        let lastMonth = formatter.string(from: last)
+        return firstMonth == lastMonth ? firstMonth : "\(firstMonth)–\(lastMonth)"
+    }
+}
+
 // MARK: - Section Header
 
 private struct SectionHeader: View {
@@ -311,7 +595,7 @@ private struct SectionHeader: View {
             if let sub = subtitle {
                 Text(sub)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
-                    .foregroundColor(Theme.textMuted.opacity(0.7))
+                    .foregroundColor(Theme.textMuted)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

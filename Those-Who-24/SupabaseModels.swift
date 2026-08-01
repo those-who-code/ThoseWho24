@@ -6,6 +6,7 @@ struct RoomRow: Codable, Identifiable {
     let id: UUID
     let code: String
     let hostId: UUID
+    let hostUserId: UUID?
     var status: RoomStatus
     var numbers: [Int]?
     var round: Int
@@ -13,6 +14,7 @@ struct RoomRow: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, code, status, numbers, round
         case hostId = "host_id"
+        case hostUserId = "host_user_id"
     }
 }
 
@@ -63,22 +65,147 @@ struct SubmissionRow: Codable, Identifiable {
     }
 }
 
+// MARK: - Social Models
+
+struct ProfileRow: Codable, Identifiable {
+    let id: UUID
+    let username: String?
+    let createdAt: Date
+    let updatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, username
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+// MARK: - Daily Puzzle Models
+
+struct DailyPuzzleState: Codable {
+    let puzzleDate: String
+    let numbers: [Int]
+    let startedAt: Date?
+    let completedMilliseconds: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case numbers
+        case puzzleDate = "puzzle_date"
+        case startedAt = "started_at"
+        case completedMilliseconds = "completed_milliseconds"
+    }
+}
+
+struct DailyLeaderboardEntry: Codable, Identifiable {
+    let rank: Int
+    let userId: UUID
+    let username: String
+    let completedMilliseconds: Int
+    let isCurrentUser: Bool
+
+    var id: UUID { userId }
+
+    enum CodingKeys: String, CodingKey {
+        case rank, username
+        case userId = "user_id"
+        case completedMilliseconds = "completed_milliseconds"
+        case isCurrentUser = "is_current_user"
+    }
+}
+
+struct SchoolDailyLeaderboardEntry: Codable, Identifiable {
+    let rank: Int
+    let schoolKey: String
+    let averageMilliseconds: Int
+    let solverCount: Int
+    let isCurrentSchool: Bool
+
+    var id: String { schoolKey }
+
+    enum CodingKeys: String, CodingKey {
+        case rank
+        case schoolKey = "school_key"
+        case averageMilliseconds = "average_milliseconds"
+        case solverCount = "solver_count"
+        case isCurrentSchool = "is_current_school"
+    }
+}
+
+struct UniversityStatus: Codable {
+    let schoolKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case schoolKey = "school_key"
+    }
+}
+
+struct SetUniversityParams: Encodable, Sendable {
+    let schoolKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case schoolKey = "p_school_key"
+    }
+
+    nonisolated func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schoolKey, forKey: .schoolKey)
+    }
+}
+
+struct FriendConnectionRow: Codable, Identifiable {
+    let requestId: UUID
+    let userId: UUID
+    let username: String
+    let status: String
+    let direction: String
+    let createdAt: Date
+
+    var id: UUID { requestId }
+    var isIncoming: Bool { direction == "incoming" }
+
+    enum CodingKeys: String, CodingKey {
+        case username, status, direction
+        case requestId = "request_id"
+        case userId = "user_id"
+        case createdAt = "created_at"
+    }
+}
+
+struct FriendSearchResult: Codable, Identifiable {
+    let userId: UUID
+    let username: String
+    let mutualFriendCount: Int
+    var relationshipState: String
+
+    var id: UUID { userId }
+
+    enum CodingKeys: String, CodingKey {
+        case username
+        case userId = "user_id"
+        case mutualFriendCount = "mutual_friend_count"
+        case relationshipState = "relationship_state"
+    }
+}
+
 // MARK: - Insert Payloads
 
 struct RoomInsert: Sendable {
     let code: String
     let hostId: String
+    let hostUserId: UUID
 }
 
 extension RoomInsert: Encodable {
     enum CodingKeys: String, CodingKey {
         case code
         case hostId = "host_id"
+        case hostUserId = "host_user_id"
     }
     nonisolated func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(code, forKey: .code)
         try c.encode(hostId, forKey: .hostId)
+        try c.encode(hostUserId, forKey: .hostUserId)
     }
 }
 
@@ -155,6 +282,158 @@ extension StartRoundParams: Encodable {
 struct DissolveRoomParams: Sendable {
     let pRoomId: UUID
     let pHostId: UUID
+}
+
+struct UsernameParams: Sendable {
+    let username: String
+}
+
+extension UsernameParams: Encodable {
+    enum CodingKeys: String, CodingKey { case username = "p_username" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(username, forKey: .username)
+    }
+}
+
+struct SearchProfilesParams: Sendable {
+    let query: String
+}
+
+extension SearchProfilesParams: Encodable {
+    enum CodingKeys: String, CodingKey { case query = "p_query" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(query, forKey: .query)
+    }
+}
+
+struct FriendUserParams: Sendable {
+    let userId: UUID
+}
+
+extension FriendUserParams: Encodable {
+    enum CodingKeys: String, CodingKey { case userId = "p_user_id" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(userId, forKey: .userId)
+    }
+}
+
+struct FriendRequestParams: Sendable {
+    let receiverId: UUID
+}
+
+extension FriendRequestParams: Encodable {
+    enum CodingKeys: String, CodingKey { case receiverId = "p_receiver_id" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(receiverId, forKey: .receiverId)
+    }
+}
+
+struct FriendResponseParams: Sendable {
+    let requestId: UUID
+    let accept: Bool
+}
+
+struct SubmitDailyPuzzleParams: Sendable {
+    let puzzleDate: String
+}
+
+extension SubmitDailyPuzzleParams: Encodable {
+    enum CodingKeys: String, CodingKey { case puzzleDate = "p_puzzle_date" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(puzzleDate, forKey: .puzzleDate)
+    }
+}
+
+struct DailyLeaderboardParams: Sendable {
+    let puzzleDate: String?
+}
+
+extension DailyLeaderboardParams: Encodable {
+    enum CodingKeys: String, CodingKey { case puzzleDate = "p_puzzle_date" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(puzzleDate, forKey: .puzzleDate)
+    }
+}
+
+extension FriendResponseParams: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+        case accept = "p_accept"
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestId, forKey: .requestId)
+        try c.encode(accept, forKey: .accept)
+    }
+}
+
+struct FriendNotificationBody: Sendable {
+    let requestId: UUID
+    let kind: String
+}
+
+struct RoomInviteNotificationBody: Sendable {
+    let recipientId: UUID
+    let roomCode: String
+}
+
+struct DailySolveNotificationBody: Sendable {
+    let kind = "daily_puzzle_solved"
+}
+
+struct RegisterDeviceTokenParams: Sendable {
+    let token: String
+    let environment: String
+}
+
+extension RegisterDeviceTokenParams: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case token = "p_token"
+        case environment = "p_environment"
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(token, forKey: .token)
+        try c.encode(environment, forKey: .environment)
+    }
+}
+
+extension FriendNotificationBody: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case requestId = "request_id"
+        case kind
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestId, forKey: .requestId)
+        try c.encode(kind, forKey: .kind)
+    }
+}
+
+extension RoomInviteNotificationBody: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case recipientId = "recipient_id"
+        case roomCode = "room_code"
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(recipientId, forKey: .recipientId)
+        try c.encode(roomCode, forKey: .roomCode)
+    }
+}
+
+extension DailySolveNotificationBody: Encodable {
+    enum CodingKeys: String, CodingKey { case kind }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(kind, forKey: .kind)
+    }
 }
 
 extension DissolveRoomParams: Encodable {

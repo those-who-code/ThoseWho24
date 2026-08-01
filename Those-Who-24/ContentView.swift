@@ -351,10 +351,13 @@ class GameViewModel: ObservableObject {
     private var initialValues: [Fraction] = []
     private var timerCancellable: AnyCancellable?
     private var startTime: Date?
+    private var dailyStartedAt: Date?
     private var undoStack: [BoardSnapshot] = []
     var allSolutions: [Solution] = []
     var playerMoves: [PlayerMove] = []
     var isMultiplayer = false
+    var isDailyPuzzle = false
+    var onDailySolve: ((Double) -> Void)?
 
     var canUndo: Bool { !undoStack.isEmpty && !didWin }
 
@@ -365,6 +368,7 @@ class GameViewModel: ObservableObject {
     // Used by multiplayer to set a server-provided puzzle
     func setupMultiplayerRound(numbers: [Int]) {
         isMultiplayer = true
+        isDailyPuzzle = false
         let fractions = numbers.map { Fraction($0) }
         initialValues = fractions
         allSolutions = findAllSolutions(values: fractions)
@@ -380,6 +384,26 @@ class GameViewModel: ObservableObject {
         cards = fractions.map { NumberCard(value: $0) }
         message = "Make 24"
         stopTimer()
+    }
+
+    func setupDailyPuzzle(
+        numbers: [Int],
+        startedAt: Date,
+        onSolve: @escaping (Double) -> Void
+    ) {
+        isMultiplayer = false
+        isDailyPuzzle = true
+        dailyStartedAt = startedAt
+        onDailySolve = onSolve
+        let fractions = numbers.map { Fraction($0) }
+        initialValues = fractions
+        allSolutions = findAllSolutions(values: fractions)
+        showCompleted = false
+        showingSolution = false
+        revealedStepCount = 0
+        undoStack = []
+        playerMoves = []
+        resetBoard(startedAt: startedAt)
     }
 
     func hideHints() {
@@ -401,7 +425,7 @@ class GameViewModel: ObservableObject {
         resetBoard()
     }
 
-    func resetBoard() {
+    func resetBoard(startedAt: Date? = nil) {
         cards = initialValues.map { NumberCard(value: $0) }
         selectedCardIndex = nil
         selectedOperator = nil
@@ -412,18 +436,19 @@ class GameViewModel: ObservableObject {
         revealedStepCount = 0
         undoStack = []
         playerMoves = []
-        startTimer()
+        startTimer(startedAt: startedAt ?? (isDailyPuzzle ? dailyStartedAt : nil))
     }
 
-    func startTimer() {
-        elapsedSeconds = 0
-        startTime = Date()
+    func startTimer(startedAt: Date? = nil) {
+        let effectiveStart = startedAt ?? Date()
+        startTime = effectiveStart
+        elapsedSeconds = max(0, Int(Date().timeIntervalSince(effectiveStart)))
         timerCancellable?.cancel()
         timerCancellable = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
                 guard let self = self, !self.isGameOver else { return }
-                self.elapsedSeconds += 1
+                self.elapsedSeconds = max(0, Int(Date().timeIntervalSince(effectiveStart)))
             }
     }
 
@@ -522,13 +547,15 @@ class GameViewModel: ObservableObject {
                 stopTimer()
                 message = ":)"
                 if !isMultiplayer {
-                    StatsManager.shared.recordSolve(
-                        seconds: startTime.map { Date().timeIntervalSince($0) } ?? Double(elapsedSeconds),
-                        numbers: initialValues.map { $0.num }
-                    )
+                    let solveSeconds = startTime.map { Date().timeIntervalSince($0) } ?? Double(elapsedSeconds)
+                    StatsManager.shared.recordSolve(seconds: solveSeconds, numbers: initialValues.map { $0.num })
                     Haptics.successDoubleTap()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                        withAnimation { self.showCompleted = true }
+                    if isDailyPuzzle {
+                        onDailySolve?(solveSeconds)
+                    } else {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            withAnimation { self.showCompleted = true }
+                        }
                     }
                 } else {
                     Haptics.successDoubleTap()
@@ -566,6 +593,8 @@ struct ContentView: View {
     var onMultiplayerTap: (() -> Void)? = nil
     var onStatsTap: (() -> Void)? = nil
     var onSettingsTap: (() -> Void)? = nil
+    var onDailyTap: (() -> Void)? = nil
+    var highlightDailyBanner = false
 
     var body: some View {
         ZStack {
@@ -575,7 +604,14 @@ struct ContentView: View {
                 CompletedView(vm: vm)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             } else {
-                GameView(vm: vm, onMultiplayerTap: onMultiplayerTap, onStatsTap: onStatsTap, onSettingsTap: onSettingsTap)
+                GameView(
+                    vm: vm,
+                    onMultiplayerTap: onMultiplayerTap,
+                    onStatsTap: onStatsTap,
+                    onSettingsTap: onSettingsTap,
+                    onDailyTap: onDailyTap,
+                    highlightDailyBanner: highlightDailyBanner
+                )
             }
         }
     }
@@ -617,6 +653,11 @@ struct GameView: View {
     var onMultiplayerTap: (() -> Void)? = nil
     var onStatsTap: (() -> Void)? = nil
     var onSettingsTap: (() -> Void)? = nil
+    var onDailyTap: (() -> Void)? = nil
+    var highlightDailyBanner = false
+    var isDailyPuzzle = false
+    var onDailyExit: (() -> Void)? = nil
+    @State private var dailyBannerPulse = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -628,7 +669,7 @@ struct GameView: View {
                     Text(vm.timerString)
                         .font(.system(size: 16, weight: .semibold, design: .monospaced))
                 }
-                .foregroundColor(Theme.brown.opacity(0.5))
+                .foregroundColor(Theme.textSecondary)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Theme.cream.opacity(0.7))
@@ -636,14 +677,27 @@ struct GameView: View {
 
                 Spacer()
 
-                if let onSettingsTap {
+                if isDailyPuzzle, let onDailyExit {
+                    Button {
+                        Haptics.light()
+                        onDailyExit()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Theme.textSecondary)
+                            .frame(width: 32, height: 32)
+                            .background(Theme.cream.opacity(0.7))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                } else if let onSettingsTap {
                     Button {
                         Haptics.light()
                         onSettingsTap()
                     } label: {
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -658,7 +712,7 @@ struct GameView: View {
                     } label: {
                         Image(systemName: "chart.bar.fill")
                             .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -677,7 +731,7 @@ struct GameView: View {
                             Text("Multiplayer")
                                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                         }
-                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .foregroundColor(Theme.textSecondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                         .background(Theme.cream.opacity(0.7))
@@ -687,31 +741,83 @@ struct GameView: View {
                     Spacer()
                 }
 
-                Button {
-                    Haptics.light()
-                    vm.revealNextStep()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "lightbulb.fill")
-                            .font(.system(size: 16, weight: .medium))
-                        if vm.showingSolution && !vm.solutionFullyRevealed {
-                            Text("Next")
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                if !isDailyPuzzle {
+                    Button {
+                        Haptics.light()
+                        vm.revealNextStep()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lightbulb.fill")
+                                .font(.system(size: 16, weight: .medium))
+                            if vm.showingSolution && !vm.solutionFullyRevealed {
+                                Text("Next")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            }
                         }
+                        .foregroundColor(vm.solutionFullyRevealed ? Theme.amber.opacity(0.3) : Theme.amber)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Theme.cream.opacity(0.7))
+                        .clipShape(Capsule())
                     }
-                    .foregroundColor(vm.solutionFullyRevealed ? Theme.amber.opacity(0.3) : Theme.amber)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Theme.cream.opacity(0.7))
-                    .clipShape(Capsule())
+                    .disabled(vm.solutionFullyRevealed)
+                    .buttonStyle(.plain)
                 }
-                .disabled(vm.solutionFullyRevealed)
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, 24)
             .padding(.top, 16)
 
             Spacer()
+
+            if !isDailyPuzzle, let onDailyTap {
+                Button {
+                    Haptics.light()
+                    onDailyTap()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Theme.amber)
+                        Text("Daily Puzzle")
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .foregroundColor(Theme.brown)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Theme.textMuted)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(height: 38)
+                    .background(Theme.cream)
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(
+                                Theme.amber.opacity(
+                                    highlightDailyBanner && dailyBannerPulse ? 0.85 : 0.25
+                                ),
+                                lineWidth: highlightDailyBanner ? 2 : 1
+                            )
+                    )
+                    .shadow(
+                        color: Theme.amber.opacity(
+                            highlightDailyBanner && dailyBannerPulse ? 0.35 : 0
+                        ),
+                        radius: 8
+                    )
+                }
+                .buttonStyle(.plain)
+                .scaleEffect(highlightDailyBanner && dailyBannerPulse ? 1.045 : 1)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onAppear {
+                    guard highlightDailyBanner else { return }
+                    withAnimation(.easeInOut(duration: 0.85).repeatForever(autoreverses: true)) {
+                        dailyBannerPulse = true
+                    }
+                }
+
+                Spacer()
+            }
 
             // Title
             Text(vm.message)
@@ -790,9 +896,16 @@ struct GameView: View {
                         vm.undo()
                     }
                 }
-                BottomButton(label: "New Game", icon: "arrow.right", filled: true) {
-                    Haptics.heavy()
-                    vm.generateNewPuzzle()
+                if isDailyPuzzle {
+                    BottomButton(label: "Start Over", icon: "arrow.counterclockwise", filled: true) {
+                        Haptics.heavy()
+                        vm.resetBoard()
+                    }
+                } else {
+                    BottomButton(label: "New Game", icon: "arrow.right", filled: true) {
+                        Haptics.heavy()
+                        vm.generateNewPuzzle()
+                    }
                 }
             }
             .padding(.horizontal, 32)
@@ -822,7 +935,7 @@ struct CompletedView: View {
                 Text(vm.timerString)
                     .font(.system(size: 16, weight: .semibold, design: .monospaced))
             }
-            .foregroundColor(Theme.brown.opacity(0.5))
+            .foregroundColor(Theme.textSecondary)
             .padding(.horizontal, 14)
             .padding(.vertical, 6)
             .background(Theme.cream.opacity(0.7))
@@ -840,7 +953,7 @@ struct CompletedView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Solution \(idx + 1)")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(Theme.amber)
+                                .foregroundColor(Theme.textPrimary)
 
                             Text(sol.expression)
                                 .font(.system(size: 16, weight: .semibold, design: .monospaced))
@@ -849,7 +962,7 @@ struct CompletedView: View {
                             ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
                                 Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                     .font(.system(size: 15, weight: .medium, design: .monospaced))
-                                    .foregroundColor(Theme.brown.opacity(0.6))
+                                    .foregroundColor(Theme.textSecondary)
                             }
                         }
                         .padding(16)
@@ -932,14 +1045,14 @@ struct SolutionStepsView: View {
                         HStack(spacing: 8) {
                             Text("\(idx + 1)")
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
+                                .foregroundColor(Theme.accentText)
                                 .frame(width: 24, height: 24)
                                 .background(Theme.amber)
                                 .clipShape(Circle())
 
                             Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                 .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                                .foregroundColor(Theme.brown.opacity(0.8))
+                                .foregroundColor(Theme.textPrimary)
                         }
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     } else {
@@ -983,7 +1096,9 @@ struct BottomButton: View {
             .frame(maxWidth: .infinity)
             .frame(height: 50)
             .background(filled ? Theme.buttonPrimary : Theme.buttonSecondary.opacity(enabled ? 1 : 0.5))
-            .foregroundColor(filled ? Theme.cardSelectedText : Theme.brown.opacity(enabled ? 1 : 0.35))
+            .foregroundColor(
+                filled ? Theme.cardSelectedText : (enabled ? Theme.textPrimary : Theme.textMuted)
+            )
             .clipShape(RoundedRectangle(cornerRadius: 16))
             .shadow(color: Theme.brown.opacity(filled ? 0.15 : 0.05), radius: 4, y: 2)
         }

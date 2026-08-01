@@ -39,6 +39,8 @@ class MultiplayerViewModel {
     var players: [PlayerRow] = []
     var currentRoom: RoomRow? = nil
     var gameVM: GameViewModel? = nil
+    private(set) var invitedFriendIds: Set<UUID> = []
+    private(set) var invitingFriendIds: Set<UUID> = []
 
     private(set) var myPlayerId: UUID? = nil
     private(set) var myRoomId: UUID? = nil
@@ -109,6 +111,25 @@ class MultiplayerViewModel {
             try await service.startRound(roomId: roomId, hostPlayerId: playerId, numbers: numbers)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    func inviteFriend(_ friend: FriendConnectionRow) async {
+        guard isHost, let roomCode = currentRoom?.code else { return }
+        guard !invitedFriendIds.contains(friend.userId),
+              !invitingFriendIds.contains(friend.userId) else { return }
+
+        invitingFriendIds.insert(friend.userId)
+        defer { invitingFriendIds.remove(friend.userId) }
+        do {
+            try await service.sendRoomInvite(
+                to: friend.userId,
+                roomCode: roomCode
+            )
+            invitedFriendIds.insert(friend.userId)
+            Haptics.successDoubleTap()
+        } catch {
+            errorMessage = "Couldn’t invite @\(friend.username). \(error.localizedDescription)"
         }
     }
 
@@ -267,6 +288,8 @@ class MultiplayerViewModel {
         currentRoom = nil
         players = []
         gameVM = nil
+        invitedFriendIds = []
+        invitingFriendIds = []
         errorMessage = nil
         state = .nameEntry
     }

@@ -6,6 +6,7 @@ import Combine
 struct ColorPalette {
     let name: String
     let icon: String
+    let interfaceColorScheme: ColorScheme
 
     // Backgrounds
     let backgroundTop: Color
@@ -19,6 +20,7 @@ struct ColorPalette {
     let cream: Color
     let warmGreen: Color
     let softOrange: Color
+    let accentText: Color
 
     // Card colors
     let cardColors: [Color]
@@ -43,6 +45,8 @@ struct ColorPalette {
     let textPrimary: Color
     let textSecondary: Color
     let textMuted: Color
+    let destructiveText: Color
+
 }
 
 // MARK: - Built-in Palettes
@@ -51,6 +55,7 @@ extension ColorPalette {
     static let nature = ColorPalette(
         name: "Nature",
         icon: "leaf.fill",
+        interfaceColorScheme: .light,
         backgroundTop: .white,
         backgroundBottom: .white,
         cardSurface: .white,
@@ -60,6 +65,7 @@ extension ColorPalette {
         cream: Color(red: 0.96, green: 0.93, blue: 0.87),
         warmGreen: Color(red: 0.55, green: 0.68, blue: 0.48),
         softOrange: Color(red: 0.90, green: 0.72, blue: 0.50),
+        accentText: Color(red: 0.08, green: 0.07, blue: 0.06),
         cardColors: [
             Color(red: 0.93, green: 0.85, blue: 0.70),
             Color(red: 0.80, green: 0.87, blue: 0.73),
@@ -75,13 +81,15 @@ extension ColorPalette {
         scoreMe: Color(red: 0.55, green: 0.68, blue: 0.48),
         scoreOther: Color(red: 0.93, green: 0.89, blue: 0.82),
         textPrimary: Color(red: 0.35, green: 0.25, blue: 0.18),
-        textSecondary: Color(red: 0.35, green: 0.25, blue: 0.18).opacity(0.5),
-        textMuted: Color(red: 0.35, green: 0.25, blue: 0.18).opacity(0.35)
+        textSecondary: Color(red: 0.35, green: 0.25, blue: 0.18).opacity(0.82),
+        textMuted: Color(red: 0.35, green: 0.25, blue: 0.18).opacity(0.78),
+        destructiveText: Color(red: 0.65, green: 0.08, blue: 0.08)
     )
 
     static let ocean = ColorPalette(
         name: "Ocean",
         icon: "water.waves",
+        interfaceColorScheme: .light,
         backgroundTop: Color(red: 0.95, green: 0.97, blue: 1.0),
         backgroundBottom: Color(red: 0.95, green: 0.97, blue: 1.0),
         cardSurface: Color(red: 0.95, green: 0.97, blue: 1.0),
@@ -91,6 +99,7 @@ extension ColorPalette {
         cream: Color(red: 0.90, green: 0.94, blue: 0.98),
         warmGreen: Color(red: 0.30, green: 0.70, blue: 0.65),
         softOrange: Color(red: 0.55, green: 0.75, blue: 0.90),
+        accentText: Color(red: 0.06, green: 0.08, blue: 0.10),
         cardColors: [
             Color(red: 0.78, green: 0.88, blue: 0.96),
             Color(red: 0.72, green: 0.90, blue: 0.88),
@@ -106,13 +115,15 @@ extension ColorPalette {
         scoreMe: Color(red: 0.30, green: 0.70, blue: 0.65),
         scoreOther: Color(red: 0.88, green: 0.93, blue: 0.98),
         textPrimary: Color(red: 0.15, green: 0.25, blue: 0.40),
-        textSecondary: Color(red: 0.15, green: 0.25, blue: 0.40).opacity(0.5),
-        textMuted: Color(red: 0.15, green: 0.25, blue: 0.40).opacity(0.35)
+        textSecondary: Color(red: 0.15, green: 0.25, blue: 0.40).opacity(0.82),
+        textMuted: Color(red: 0.15, green: 0.25, blue: 0.40).opacity(0.78),
+        destructiveText: Color(red: 0.65, green: 0.08, blue: 0.08)
     )
 
     static let berry = ColorPalette(
         name: "Berry",
         icon: "circle.hexagongrid.fill",
+        interfaceColorScheme: .light,
         backgroundTop: Color(red: 0.98, green: 0.95, blue: 0.97),
         backgroundBottom: Color(red: 0.98, green: 0.95, blue: 0.97),
         cardSurface: Color(red: 0.98, green: 0.95, blue: 0.97),
@@ -122,6 +133,7 @@ extension ColorPalette {
         cream: Color(red: 0.96, green: 0.90, blue: 0.94),
         warmGreen: Color(red: 0.65, green: 0.40, blue: 0.70),
         softOrange: Color(red: 0.85, green: 0.55, blue: 0.65),
+        accentText: Color(red: 0.09, green: 0.05, blue: 0.08),
         cardColors: [
             Color(red: 0.92, green: 0.80, blue: 0.88),
             Color(red: 0.85, green: 0.78, blue: 0.92),
@@ -137,13 +149,15 @@ extension ColorPalette {
         scoreMe: Color(red: 0.65, green: 0.40, blue: 0.70),
         scoreOther: Color(red: 0.94, green: 0.88, blue: 0.92),
         textPrimary: Color(red: 0.35, green: 0.15, blue: 0.30),
-        textSecondary: Color(red: 0.35, green: 0.15, blue: 0.30).opacity(0.5),
-        textMuted: Color(red: 0.35, green: 0.15, blue: 0.30).opacity(0.35)
+        textSecondary: Color(red: 0.35, green: 0.15, blue: 0.30).opacity(0.82),
+        textMuted: Color(red: 0.35, green: 0.15, blue: 0.30).opacity(0.78),
+        destructiveText: Color(red: 0.65, green: 0.08, blue: 0.08)
     )
 
     static let midnight = ColorPalette(
         name: "Midnight",
         icon: "moon.stars.fill",
+        interfaceColorScheme: .dark,
         backgroundTop: Color(red: 0.10, green: 0.10, blue: 0.14),
         backgroundBottom: Color(red: 0.10, green: 0.10, blue: 0.14),
         cardSurface: Color(red: 0.10, green: 0.10, blue: 0.14),
@@ -153,6 +167,7 @@ extension ColorPalette {
         cream: Color(red: 0.18, green: 0.18, blue: 0.22),
         warmGreen: Color(red: 0.45, green: 0.75, blue: 0.55),
         softOrange: Color(red: 0.85, green: 0.65, blue: 0.40),
+        accentText: Color(red: 0.08, green: 0.07, blue: 0.06),
         cardColors: [
             Color(red: 0.22, green: 0.22, blue: 0.28),
             Color(red: 0.20, green: 0.24, blue: 0.22),
@@ -168,13 +183,15 @@ extension ColorPalette {
         scoreMe: Color(red: 0.45, green: 0.75, blue: 0.55),
         scoreOther: Color(red: 0.18, green: 0.18, blue: 0.22),
         textPrimary: Color(red: 0.90, green: 0.88, blue: 0.82),
-        textSecondary: Color(red: 0.90, green: 0.88, blue: 0.82).opacity(0.5),
-        textMuted: Color(red: 0.90, green: 0.88, blue: 0.82).opacity(0.35)
+        textSecondary: Color(red: 0.90, green: 0.88, blue: 0.82).opacity(0.82),
+        textMuted: Color(red: 0.90, green: 0.88, blue: 0.82).opacity(0.78),
+        destructiveText: Color(red: 1.0, green: 0.55, blue: 0.52)
     )
 
     static let sunset = ColorPalette(
         name: "Sunset",
         icon: "sun.horizon.fill",
+        interfaceColorScheme: .light,
         backgroundTop: Color(red: 1.0, green: 0.97, blue: 0.94),
         backgroundBottom: Color(red: 1.0, green: 0.97, blue: 0.94),
         cardSurface: Color(red: 1.0, green: 0.97, blue: 0.94),
@@ -184,6 +201,7 @@ extension ColorPalette {
         cream: Color(red: 0.98, green: 0.92, blue: 0.86),
         warmGreen: Color(red: 0.85, green: 0.55, blue: 0.30),
         softOrange: Color(red: 0.95, green: 0.65, blue: 0.40),
+        accentText: Color(red: 0.09, green: 0.05, blue: 0.03),
         cardColors: [
             Color(red: 0.98, green: 0.85, blue: 0.72),
             Color(red: 0.95, green: 0.78, blue: 0.68),
@@ -199,8 +217,9 @@ extension ColorPalette {
         scoreMe: Color(red: 0.85, green: 0.55, blue: 0.30),
         scoreOther: Color(red: 0.96, green: 0.90, blue: 0.84),
         textPrimary: Color(red: 0.40, green: 0.18, blue: 0.12),
-        textSecondary: Color(red: 0.40, green: 0.18, blue: 0.12).opacity(0.5),
-        textMuted: Color(red: 0.40, green: 0.18, blue: 0.12).opacity(0.35)
+        textSecondary: Color(red: 0.40, green: 0.18, blue: 0.12).opacity(0.82),
+        textMuted: Color(red: 0.40, green: 0.18, blue: 0.12).opacity(0.78),
+        destructiveText: Color(red: 0.65, green: 0.08, blue: 0.08)
     )
 
     static let all: [ColorPalette] = [.nature, .ocean, .berry, .midnight, .sunset]
@@ -240,6 +259,7 @@ enum Theme {
     static var cream: Color { p.cream }
     static var warmGreen: Color { p.warmGreen }
     static var softOrange: Color { p.softOrange }
+    static var accentText: Color { p.accentText }
 
     // Card colors
     static var cardColors: [Color] { p.cardColors }
@@ -264,6 +284,7 @@ enum Theme {
     static var textPrimary: Color { p.textPrimary }
     static var textSecondary: Color { p.textSecondary }
     static var textMuted: Color { p.textMuted }
+    static var destructiveText: Color { p.destructiveText }
 
     // Background gradient
     static var backgroundGradient: LinearGradient {

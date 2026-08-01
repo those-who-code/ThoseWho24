@@ -1,6 +1,5 @@
 import Supabase
 import Foundation
-import Auth
 
 // MARK: - Supabase Service
 
@@ -32,6 +31,7 @@ final class SupabaseService {
 
     func createRoom(displayName: String) async throws -> (room: RoomRow, player: PlayerRow) {
         let playerId = UUID()
+        let hostUserId = try await ensureAnonymousSession()
 
         // Try inserting room with generated code; retry on unique conflict
         var room: RoomRow?
@@ -39,7 +39,11 @@ final class SupabaseService {
             let code = generateCode()
             do {
                 room = try await client.from("rooms")
-                    .insert(RoomInsert(code: code, hostId: playerId.uuidString))
+                    .insert(RoomInsert(
+                        code: code,
+                        hostId: playerId.uuidString,
+                        hostUserId: hostUserId
+                    ))
                     .select()
                     .single()
                     .execute()
@@ -224,6 +228,187 @@ final class SupabaseService {
             .update(["last_ping": ISO8601DateFormatter().string(from: Date())])
             .eq("id", value: playerId.uuidString)
             .execute()
+    }
+
+    // MARK: - Identity
+
+    func ensureAnonymousSession() async throws -> UUID {
+        if client.auth.currentUser != nil {
+            do {
+                return try await client.auth.session.user.id
+            } catch {
+                try? await client.auth.signOut()
+            }
+        }
+        return try await client.auth.signInAnonymously().user.id
+    }
+
+    func fetchProfile(userId: UUID) async throws -> ProfileRow? {
+        let profiles: [ProfileRow] = try await client.from("profiles")
+            .select()
+            .eq("id", value: userId.uuidString)
+            .limit(1)
+            .execute()
+            .value
+        return profiles.first
+    }
+
+    func setUsername(_ username: String) async throws -> ProfileRow {
+        try await client.rpc("set_username", params: UsernameParams(username: username))
+            .execute()
+            .value
+    }
+
+    // MARK: - Daily Puzzle
+
+    func startDailyPuzzle() async throws -> DailyPuzzleState {
+        try await client.rpc("start_daily_puzzle")
+            .execute()
+            .value
+    }
+
+    func fetchDailyPuzzleStatus() async throws -> DailyPuzzleState {
+        try await client.rpc("get_daily_puzzle_status")
+            .execute()
+            .value
+    }
+
+    func submitDailyPuzzle(puzzleDate: String) async throws -> Int {
+        try await client.rpc(
+            "submit_daily_puzzle",
+            params: SubmitDailyPuzzleParams(puzzleDate: puzzleDate)
+        )
+        .execute()
+        .value
+    }
+
+    func fetchSchoolDailyLeaderboard(puzzleDate: String? = nil) async throws -> [SchoolDailyLeaderboardEntry] {
+        try await client.rpc(
+            "daily_school_averages",
+            params: DailyLeaderboardParams(puzzleDate: puzzleDate)
+        )
+        .execute()
+        .value
+    }
+
+    func fetchFriendsDailyLeaderboard(puzzleDate: String? = nil) async throws -> [DailyLeaderboardEntry] {
+        try await client.rpc(
+            "daily_friends_leaderboard",
+            params: DailyLeaderboardParams(puzzleDate: puzzleDate)
+        )
+        .execute()
+        .value
+    }
+
+    func fetchUniversityStatus() async throws -> UniversityStatus {
+        try await client.rpc("get_university_status")
+            .execute()
+            .value
+    }
+
+    func selectUniversity(_ schoolKey: String) async throws -> UniversityStatus {
+        try await client.rpc(
+            "set_university",
+            params: SetUniversityParams(schoolKey: schoolKey)
+        )
+            .execute()
+            .value
+    }
+
+    // MARK: - Friends
+
+    func searchProfiles(query: String) async throws -> [FriendSearchResult] {
+        try await client.rpc("search_profiles", params: SearchProfilesParams(query: query))
+            .execute()
+            .value
+    }
+
+    func fetchFriendConnections() async throws -> [FriendConnectionRow] {
+        try await client.rpc("list_friend_connections")
+            .execute()
+            .value
+    }
+
+    func sendFriendRequest(to userId: UUID) async throws -> UUID {
+        try await client.rpc(
+            "send_friend_request",
+            params: FriendRequestParams(receiverId: userId)
+        )
+        .execute()
+        .value
+    }
+
+    func respondToFriendRequest(id: UUID, accept: Bool) async throws {
+        try await client.rpc(
+            "respond_to_friend_request",
+            params: FriendResponseParams(requestId: id, accept: accept)
+        )
+        .execute()
+    }
+
+    func removeFriendConnection(userId: UUID) async throws {
+        try await client.rpc(
+            "remove_friend_connection",
+            params: FriendUserParams(userId: userId)
+        )
+        .execute()
+    }
+
+    func registerDeviceToken(_ token: String, environment: String) async throws {
+        try await client.rpc(
+            "register_device_token",
+            params: RegisterDeviceTokenParams(
+                token: token,
+                environment: environment
+            )
+        )
+        .execute()
+    }
+
+    func sendFriendNotification(requestId: UUID, kind: String) async {
+        try? await client.functions.invoke(
+            "send-friend-notification",
+            options: .init(
+                body: FriendNotificationBody(requestId: requestId, kind: kind)
+            )
+        )
+    }
+
+    func sendRoomInvite(to recipientId: UUID, roomCode: String) async throws {
+        try await client.functions.invoke(
+            "send-friend-notification",
+            options: .init(
+                body: RoomInviteNotificationBody(
+                    recipientId: recipientId,
+                    roomCode: roomCode
+                )
+            )
+        )
+    }
+
+    func sendDailySolveNotification() async {
+        try? await client.functions.invoke(
+            "send-friend-notification",
+            options: .init(body: DailySolveNotificationBody())
+        )
+    }
+
+    func subscribeToFriendChanges(onChange: @escaping @Sendable () -> Void) -> Task<Void, Never> {
+        Task {
+            let channel = client.realtimeV2.channel("friend-connections")
+            let changes = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "friend_connections"
+            )
+
+            try? await channel.subscribeWithError()
+            for await _ in changes {
+                guard !Task.isCancelled else { break }
+                await MainActor.run { onChange() }
+            }
+            await client.realtimeV2.removeChannel(channel)
+        }
     }
 }
 
