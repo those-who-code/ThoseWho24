@@ -47,7 +47,10 @@ begin
   if auth.uid() is null then
     raise exception 'Authentication required';
   end if;
-  if p_school_key is null or not (p_school_key = any(v_allowed)) then
+  if p_school_key is null or not (
+    p_school_key = any(v_allowed)
+    or p_school_key ~ '^us-[0-9]{6}$'
+  ) then
     raise exception 'That university is not available';
   end if;
 

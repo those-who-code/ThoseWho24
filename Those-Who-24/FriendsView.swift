@@ -7,6 +7,7 @@ private enum FriendsTab: String, CaseIterable {
 
 struct FriendsView: View {
     @Bindable var manager: FriendsManager
+    var initiallyShowsRequests = false
     @Environment(\.dismiss) private var dismiss
     @State private var selectedTab: FriendsTab = .friends
     @State private var searchText = ""
@@ -28,6 +29,9 @@ struct FriendsView: View {
             }
         }
         .task {
+            if initiallyShowsRequests {
+                selectedTab = .requests
+            }
             await manager.refreshConnections()
         }
         .task(id: searchText) {

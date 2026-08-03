@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var friends = FriendsManager.shared
     @State private var showResetAlert = false
     @State private var showFriends = false
+    @State private var showFriendRequests = false
     @State private var showUniversity = false
     @State private var showDailyGame = false
     @State private var daily = DailyPuzzleManager.shared
@@ -88,7 +89,7 @@ struct SettingsView: View {
             }
         }
         .sheet(isPresented: $showFriends) {
-            FriendsView(manager: friends)
+            FriendsView(manager: friends, initiallyShowsRequests: showFriendRequests)
         }
         .sheet(isPresented: $showUniversity) {
             UniversitySettingsView(manager: daily)
@@ -206,38 +207,26 @@ struct SettingsView: View {
                     Spacer()
 
                     if friends.pendingRequestCount > 0 {
-                        Text("\(friends.pendingRequestCount)")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Theme.accentText)
-                            .frame(minWidth: 24, minHeight: 24)
-                            .background(Theme.amber)
-                            .clipShape(Circle())
-                    }
-                }
-
-                if !friends.friends.isEmpty {
-                    VStack(spacing: 0) {
-                        ForEach(Array(friends.friends.prefix(3).enumerated()), id: \.element.id) { index, friend in
-                            HStack {
-                                Image(systemName: "person.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(Theme.amber)
-                                Text("@\(friend.username)")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Theme.brown)
-                                Spacer()
-                            }
-                            .padding(.vertical, 9)
-
-                            if index < min(friends.friends.count, 3) - 1 {
-                                Divider().opacity(0.35)
-                            }
+                        Button {
+                            Haptics.light()
+                            showFriendRequests = true
+                            showFriends = true
+                        } label: {
+                            Text("\(friends.pendingRequestCount)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(Theme.accentText)
+                                .frame(width: 32, height: 32)
+                                .background(Theme.amber)
+                                .clipShape(Circle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(friends.pendingRequestCount) pending friend requests")
                     }
                 }
 
                 Button {
                     Haptics.light()
+                    showFriendRequests = false
                     showFriends = true
                 } label: {
                     HStack(spacing: 7) {

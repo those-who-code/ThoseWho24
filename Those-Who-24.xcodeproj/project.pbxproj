@@ -7,9 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BD17D9E4301ED94B00411D4C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = BD7BCA0B2FA1C50000BD5B88 /* Supabase */; };
+		BD17D9E5301ED94B00411D4C /* SwiftDotenv in Frameworks */ = {isa = PBXBuildFile; productRef = BD7BCA0C2FA1C50000BD5B88 /* SwiftDotenv */; };
 		BD7BCA082FA1C15500BD5B88 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BD7BCA072FA1C15500BD5B88 /* Launch Screen.storyboard */; };
-		BD992D77301AD37300EC8D68 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = BD7BCA0B2FA1C50000BD5B88 /* Supabase */; };
-		BD992D78301AD37300EC8D68 /* SwiftDotenv in Frameworks */ = {isa = PBXBuildFile; productRef = BD7BCA0C2FA1C50000BD5B88 /* SwiftDotenv */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,8 +31,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BD992D78301AD37300EC8D68 /* SwiftDotenv in Frameworks */,
-				BD992D77301AD37300EC8D68 /* Supabase in Frameworks */,
+				BD17D9E5301ED94B00411D4C /* SwiftDotenv in Frameworks */,
+				BD17D9E4301ED94B00411D4C /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -104,11 +104,6 @@
 				TargetAttributes = {
 					BD7BC9DF2FA1BFF500BD5B88 = {
 						CreatedOnToolsVersion = 26.3;
-						SystemCapabilities = {
-							com.apple.Push = {
-								enabled = 1;
-							};
-						};
 					};
 				};
 			};

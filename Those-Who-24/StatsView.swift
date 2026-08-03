@@ -72,7 +72,9 @@ class StatsManager: ObservableObject {
         return sorted[lo] + (i - Double(lo)) * (sorted[hi] - sorted[lo])
     }
 
-    var totalTimeSeconds: Int { Int(solves.reduce(0.0) { $0 + $1.seconds }) }
+    var totalTimeSeconds: Int {
+        Int(withoutOutliers(solves).reduce(0.0) { $0 + $1.seconds })
+    }
 
     var medianSeconds: Double? {
         guard !solves.isEmpty else { return nil }
@@ -130,30 +132,36 @@ class StatsManager: ObservableObject {
         return longest
     }
 
-    // A solve this far above the median is an interruption, not an attempt.
-    // Median-relative so the rule holds for both fast and slow players.
-    private let outlierMedianMultiple = 5.0
+    // A solve this far above the median is treated as an interrupted attempt.
+    private let outlierMedianMultiple = 8.0
 
     func withoutOutliers(_ records: [SolveRecord]) -> [SolveRecord] {
-        guard let median = medianSeconds else { return records }
-        let threshold = median * outlierMedianMultiple
-        return records.filter { $0.seconds <= threshold }
+        guard !records.isEmpty else { return [] }
+        let sorted = records.map(\.seconds).sorted()
+        let mid = sorted.count / 2
+        let localMedian = sorted.count % 2 == 0
+            ? (sorted[mid - 1] + sorted[mid]) / 2.0
+            : sorted[mid]
+        let threshold = localMedian * outlierMedianMultiple
+        return records.filter { $0.seconds >= 0 && $0.seconds <= threshold }
     }
 
     // AoN over most recent N solves
     func averageOf(_ n: Int) -> Double? {
-        guard solves.count >= n else { return nil }
+        let eligible = withoutOutliers(solves)
+        guard eligible.count >= n else { return nil }
         let drop = n <= 12 ? 1 : 5
-        let sorted = solves.suffix(n).map(\.seconds).sorted()
+        let sorted = eligible.suffix(n).map(\.seconds).sorted()
         let trimmed = sorted.dropFirst(drop).dropLast(drop)
         return trimmed.reduce(0.0, +) / Double(trimmed.count)
     }
 
     // Best aoN ever — scan every rolling window of N in solve history
     func bestAverageOf(_ n: Int) -> Double? {
-        guard solves.count >= n else { return nil }
+        let eligible = withoutOutliers(solves)
+        guard eligible.count >= n else { return nil }
         let drop = n <= 12 ? 1 : 5
-        let times = solves.map(\.seconds)
+        let times = eligible.map(\.seconds)
         var best: Double? = nil
         for i in (n - 1)..<times.count {
             let slice = Array(times[(i - n + 1)...i]).sorted()
@@ -230,12 +238,16 @@ struct StatsView: View {
     @ObservedObject private var stats = StatsManager.shared
     @State private var timeFrame: TimeFrame = .last100
 
-    private var filteredSolves: [SolveRecord] { timeFrame.apply(stats.solves) }
+    private var analysisSolves: [SolveRecord] { stats.withoutOutliers(stats.solves) }
+
+    private var filteredSolves: [SolveRecord] {
+        timeFrame.apply(analysisSolves)
+    }
 
     // Trend runs on outlier-free solves; `warmup` is the pre-window context
     // that primes the rolling metrics and is not itself displayed.
     private var trendData: (warmup: [SolveRecord], window: [SolveRecord]) {
-        let all = stats.withoutOutliers(stats.solves)
+        let all = analysisSolves
         let window = timeFrame.apply(all)
         let startIdx = all.count - window.count
         guard startIdx > 0 else { return ([], window) }
@@ -278,10 +290,10 @@ struct StatsView: View {
                     VStack(spacing: 20) {
                         dailyPuzzleSection
                         allTimeSection
-                        if stats.solves.count >= 5 {
+                        if analysisSolves.count >= 5 {
                             recentSection
                         }
-                        if stats.solves.count >= 2 {
+                        if analysisSolves.count >= 2 {
                             graphSection
                         }
                     }
@@ -407,7 +419,7 @@ struct StatsView: View {
         let trend = trendData
 
         return VStack(spacing: 10) {
-            SectionHeader(title: "Trend", subtitle: "Rolling ao12 + IQR spread, outliers excluded")
+            SectionHeader(title: "Trend", subtitle: "Rolling ao12 + IQR spread · interruptions excluded")
 
             timeFramePicker
 
@@ -419,7 +431,7 @@ struct StatsView: View {
 
     private var distributionSection: some View {
         VStack(spacing: 10) {
-            SectionHeader(title: "Distribution", subtitle: "Solve count by time bucket")
+            SectionHeader(title: "Distribution", subtitle: "Solve count by time bucket · interruptions excluded")
 
             DistributionChart(solves: filteredSolves)
                 .frame(height: 140)
