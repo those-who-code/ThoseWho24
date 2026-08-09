@@ -361,6 +361,23 @@ extension DailyLeaderboardParams: Encodable {
     }
 }
 
+struct SchoolDailyLeaderboardParams: Sendable {
+    let schoolKey: String
+    let puzzleDate: String?
+}
+
+extension SchoolDailyLeaderboardParams: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case schoolKey = "p_school_key"
+        case puzzleDate = "p_puzzle_date"
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(schoolKey, forKey: .schoolKey)
+        try c.encodeIfPresent(puzzleDate, forKey: .puzzleDate)
+    }
+}
+
 extension FriendResponseParams: Encodable {
     enum CodingKeys: String, CodingKey {
         case requestId = "p_request_id"

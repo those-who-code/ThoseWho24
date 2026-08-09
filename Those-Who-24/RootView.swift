@@ -17,8 +17,11 @@ struct RootView: View {
     @State private var friends = FriendsManager.shared
     @State private var notifications = PushNotificationManager.shared
     @State private var daily = DailyPuzzleManager.shared
+    @State private var network = NetworkMonitor.shared
     @State private var showDailyPuzzle = false
+    @State private var showFriendRequests = false
     @State private var isPreparingDailyPuzzle = false
+    @State private var multiplayerUnavailableMessage: String?
     @ObservedObject private var themeManager = ThemeManager.shared
     @Environment(\.scenePhase) private var scenePhase
 
@@ -27,13 +30,15 @@ struct RootView: View {
             switch mode {
             case .singlePlayer:
                 ContentView(
-                    onMultiplayerTap: { mode = .multiplayer },
+                    onMultiplayerTap: openMultiplayer,
                     onStatsTap: { mode = .stats },
                     onSettingsTap: { mode = .settings },
                     onDailyTap: daily.hasCompletedToday ? nil : {
+                        guard network.isConnected else { return }
                         Task { await openDailyPuzzle() }
                     },
-                    highlightDailyBanner: daily.isFirstDailyExperience
+                    highlightDailyBanner: daily.isFirstDailyExperience,
+                    isOnline: network.isConnected
                 )
                 .transition(.opacity)
             case .stats:
@@ -50,7 +55,7 @@ struct RootView: View {
                 .transition(.opacity)
             }
 
-            if friends.state != .ready {
+            if network.isConnected && shouldShowSocialGate {
                 SocialGateOverlay(friends: friends)
                     .zIndex(10)
             }
@@ -64,12 +69,24 @@ struct RootView: View {
                 }
             }
         }
+        .sheet(isPresented: $showFriendRequests) {
+            FriendsView(manager: friends, initiallyShowsRequests: true)
+        }
+        .alert("Multiplayer Unavailable", isPresented: Binding(
+            get: { multiplayerUnavailableMessage != nil },
+            set: { if !$0 { multiplayerUnavailableMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(multiplayerUnavailableMessage ?? "")
+        }
         .task {
             await friends.bootstrap()
             if mpVM.displayName.isEmpty, let username = friends.username {
                 mpVM.displayName = username
             }
             await joinPendingInviteIfPossible()
+            openPendingFriendRequestsIfPossible()
             await refreshDailyPuzzleStatus()
         }
         .onChange(of: friends.username) { _, username in
@@ -81,6 +98,7 @@ struct RootView: View {
             guard state == .ready else { return }
             Task {
                 await joinPendingInviteIfPossible()
+                openPendingFriendRequestsIfPossible()
                 await refreshDailyPuzzleStatus()
             }
         }
@@ -92,14 +110,59 @@ struct RootView: View {
             guard isPending else { return }
             Task { await openPendingDailyPuzzleReminder() }
         }
+        .onChange(of: notifications.pendingFriendRequests) { _, isPending in
+            guard isPending else { return }
+            openPendingFriendRequestsIfPossible()
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await refreshDailyPuzzleStatus() }
         }
+        .onChange(of: network.isConnected) { _, isConnected in
+            if isConnected {
+                if case .failed = friends.state {
+                    Task { await friends.retryBootstrap() }
+                } else if friends.state == .ready {
+                    Task {
+                        await joinPendingInviteIfPossible()
+                        openPendingFriendRequestsIfPossible()
+                        await refreshDailyPuzzleStatus()
+                    }
+                }
+            } else if mode == .multiplayer {
+                Task { await mpVM.leaveRoom() }
+                mode = .singlePlayer
+                multiplayerUnavailableMessage = "Your internet connection was lost. Multiplayer requires an internet connection."
+            }
+        }
+    }
+
+    private var shouldShowSocialGate: Bool {
+        switch friends.state {
+        case .needsUsername:
+            return true
+        case .loading, .ready, .failed:
+            return false
+        }
+    }
+
+    private func openMultiplayer() {
+        guard network.isConnected else {
+            multiplayerUnavailableMessage = "Connect to the internet to create or join a multiplayer room."
+            return
+        }
+        guard friends.state == .ready else {
+            multiplayerUnavailableMessage = "Your online profile could not be loaded. Check your connection and try again."
+            if case .failed = friends.state {
+                Task { await friends.retryBootstrap() }
+            }
+            return
+        }
+        mode = .multiplayer
     }
 
     private func refreshDailyPuzzleStatus() async {
-        guard friends.state == .ready else { return }
+        guard network.isConnected, friends.state == .ready else { return }
         guard await daily.refreshTodayStatus() else { return }
         await notifications.scheduleDailyPuzzleReminderIfNeeded(
             hasCompletedToday: daily.hasCompletedToday,
@@ -111,10 +174,18 @@ struct RootView: View {
     }
 
     private func openPendingDailyPuzzleReminder() async {
-        guard friends.state == .ready else { return }
+        guard network.isConnected, friends.state == .ready else { return }
         notifications.consumeDailyPuzzleReminder()
         mode = .singlePlayer
         await openDailyPuzzle()
+    }
+
+    private func openPendingFriendRequestsIfPossible() {
+        guard network.isConnected,
+              friends.state == .ready,
+              notifications.pendingFriendRequests else { return }
+        notifications.consumeFriendRequests()
+        showFriendRequests = true
     }
 
     private func openDailyPuzzle() async {
@@ -127,7 +198,8 @@ struct RootView: View {
     }
 
     private func joinPendingInviteIfPossible() async {
-        guard friends.state == .ready,
+        guard network.isConnected,
+              friends.state == .ready,
               let roomCode = notifications.pendingRoomCode else { return }
 
         notifications.consumeRoomInvite()

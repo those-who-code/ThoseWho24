@@ -129,9 +129,13 @@ struct WaitingRoomView: View {
                                             .foregroundColor(Theme.accentText)
                                     )
 
-                                Text(player.displayName)
-                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                    .foregroundColor(Theme.brown)
+                                HStack(spacing: 6) {
+                                    Text(player.displayName)
+                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                        .foregroundColor(Theme.brown)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                    FounderTag(username: player.displayName)
+                                }
                                 Spacer()
                                 if player.isHost {
                                     Text("Host")
@@ -261,9 +265,13 @@ private struct InviteFriendsSheet: View {
                                         .foregroundColor(Theme.accentText)
                                 }
 
-                            Text("@\(friend.username)")
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundColor(Theme.brown)
+                            HStack(spacing: 6) {
+                                Text("@\(friend.username)")
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundColor(Theme.brown)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                FounderTag(username: friend.username)
+                            }
 
                             Spacer()
 

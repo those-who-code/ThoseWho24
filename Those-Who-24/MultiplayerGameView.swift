@@ -135,13 +135,17 @@ struct ScoreboardView: View {
                     Text("\(player.score)")
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundColor(isMe ? Theme.accentText : Theme.brown)
-                    Text(player.displayName)
-                        .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundColor(
-                            isMe ? Theme.accentText.opacity(0.85) : Theme.textSecondary
-                        )
-                        .lineLimit(1)
-                        .truncationMode(.tail)
+                    HStack(spacing: 3) {
+                        Text(player.displayName)
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundColor(
+                                isMe ? Theme.accentText.opacity(0.85) : Theme.textSecondary
+                            )
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                        FounderTag(username: player.displayName)
+                            .scaleEffect(0.78)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)

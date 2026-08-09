@@ -300,6 +300,21 @@ final class SupabaseService {
         .value
     }
 
+    func fetchSchoolMembersDailyLeaderboard(
+        schoolKey: String,
+        puzzleDate: String? = nil
+    ) async throws -> [DailyLeaderboardEntry] {
+        try await client.rpc(
+            "daily_school_members_leaderboard",
+            params: SchoolDailyLeaderboardParams(
+                schoolKey: schoolKey,
+                puzzleDate: puzzleDate
+            )
+        )
+        .execute()
+        .value
+    }
+
     func fetchUniversityStatus() async throws -> UniversityStatus {
         try await client.rpc("get_university_status")
             .execute()

@@ -18,8 +18,13 @@ final class DailyPuzzleManager {
     private let firstCompletionKey = "hasCompletedFirstDailyPuzzle"
     private let solutionDateKey = "dailyPuzzleSolutionDate"
     private let solutionMovesKey = "dailyPuzzleSolutionMoves"
+    private let cachedUniversityKey = "cachedUniversitySchoolKey"
 
-    private init() {}
+    private init() {
+        if let schoolKey = UserDefaults.standard.string(forKey: cachedUniversityKey) {
+            university = UniversityStatus(schoolKey: schoolKey)
+        }
+    }
 
     var utcDateKey: String {
         let formatter = DateFormatter()
@@ -115,7 +120,7 @@ final class DailyPuzzleManager {
             async let status = service.fetchUniversityStatus()
             schoolLeaderboard = try await schools
             friendsLeaderboard = try await friends
-            university = try await status
+            updateUniversity(try await status)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -123,7 +128,7 @@ final class DailyPuzzleManager {
 
     func refreshUniversity() async {
         do {
-            university = try await service.fetchUniversityStatus()
+            updateUniversity(try await service.fetchUniversityStatus())
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -134,13 +139,18 @@ final class DailyPuzzleManager {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            university = try await service.selectUniversity(option.id)
+            updateUniversity(try await service.selectUniversity(option.id))
             await refreshLeaderboard()
             return true
         } catch {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    private func updateUniversity(_ status: UniversityStatus) {
+        university = status
+        UserDefaults.standard.set(status.schoolKey, forKey: cachedUniversityKey)
     }
 
     private func loadSolution(for puzzleDate: String) {
@@ -484,24 +494,35 @@ struct DailyResultsView: View {
         } else {
             VStack(spacing: 0) {
                 ForEach(manager.schoolLeaderboard) { entry in
-                    HStack(spacing: 12) {
-                        rankLabel(entry.rank)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(UniversityCatalog.displayName(for: entry.schoolKey))
-                                .font(.system(size: 16, weight: entry.isCurrentSchool ? .bold : .semibold, design: .rounded))
-                                .foregroundColor(Theme.brown)
-                            Text("\(entry.solverCount) solver\(entry.solverCount == 1 ? "" : "s")")
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                    NavigationLink {
+                        SchoolDailyLeaderboardView(
+                            schoolKey: entry.schoolKey,
+                            puzzleDate: puzzle.puzzleDate
+                        )
+                    } label: {
+                        HStack(spacing: 12) {
+                            rankLabel(entry.rank)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(UniversityCatalog.displayName(for: entry.schoolKey))
+                                    .font(.system(size: 16, weight: entry.isCurrentSchool ? .bold : .semibold, design: .rounded))
+                                    .foregroundColor(Theme.brown)
+                                Text("\(entry.solverCount) solver\(entry.solverCount == 1 ? "" : "s")")
+                                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                                    .foregroundColor(Theme.textSecondary)
+                            }
+                            Spacer()
+                            Text(format(milliseconds: entry.averageMilliseconds))
+                                .font(.system(size: 15, weight: .semibold, design: .monospaced))
                                 .foregroundColor(Theme.textSecondary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(Theme.textSecondary.opacity(0.7))
                         }
-                        Spacer()
-                        Text(format(milliseconds: entry.averageMilliseconds))
-                            .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                            .foregroundColor(Theme.textSecondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(entry.isCurrentSchool ? Theme.amber.opacity(0.14) : Color.clear)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(entry.isCurrentSchool ? Theme.amber.opacity(0.14) : Color.clear)
+                    .buttonStyle(.plain)
                     Divider().opacity(0.25)
                 }
             }
@@ -527,14 +548,22 @@ struct DailyResultsView: View {
                                 Text("You")
                                     .font(.system(size: 16, weight: .bold, design: .rounded))
                                     .foregroundColor(Theme.brown)
-                                Text("@\(entry.username)")
-                                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                                    .foregroundColor(Theme.textSecondary)
+                                HStack(spacing: 6) {
+                                    Text("@\(entry.username)")
+                                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                                        .foregroundColor(Theme.textSecondary)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                    FounderTag(username: entry.username)
+                                }
                             }
                         } else {
-                            Text("@\(entry.username)")
-                                .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                .foregroundColor(Theme.brown)
+                            HStack(spacing: 6) {
+                                Text("@\(entry.username)")
+                                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                    .foregroundColor(Theme.brown)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                FounderTag(username: entry.username)
+                            }
                         }
                         Spacer()
                         Text(format(milliseconds: entry.completedMilliseconds))
@@ -579,6 +608,145 @@ struct DailyResultsView: View {
         let totalSeconds = Double(milliseconds) / 1000
         if totalSeconds < 60 { return String(format: "%.2fs", totalSeconds) }
         return String(format: "%d:%05.2f", Int(totalSeconds) / 60, totalSeconds.truncatingRemainder(dividingBy: 60))
+    }
+}
+
+private struct SchoolDailyLeaderboardView: View {
+    let schoolKey: String
+    let puzzleDate: String
+
+    @State private var entries: [DailyLeaderboardEntry] = []
+    @State private var isLoading = true
+    @State private var errorMessage: String?
+
+    var body: some View {
+        ZStack {
+            Theme.backgroundGradient.ignoresSafeArea()
+
+            if isLoading {
+                ProgressView("Loading leaderboard…")
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundColor(Theme.textSecondary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(UniversityCatalog.displayName(for: schoolKey))
+                                .font(.system(size: 24, weight: .bold, design: .rounded))
+                                .foregroundColor(Theme.brown)
+                            Text("Today’s individual solve times")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundColor(Theme.textSecondary)
+                        }
+
+                        if entries.isEmpty {
+                            emptyState
+                        } else {
+                            leaderboard
+                        }
+                    }
+                    .padding(24)
+                }
+                .refreshable { await loadLeaderboard() }
+            }
+        }
+        .navigationTitle("School leaderboard")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: schoolKey) { await loadLeaderboard() }
+        .alert("Couldn’t load leaderboard", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("Try Again") { Task { await loadLeaderboard() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+    }
+
+    private var leaderboard: some View {
+        VStack(spacing: 0) {
+            ForEach(entries) { entry in
+                HStack(spacing: 12) {
+                    Text("\(entry.rank)")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(entry.rank <= 3 ? Theme.amber : Theme.textSecondary)
+                        .frame(width: 30)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        if entry.isCurrentUser {
+                            Text("You")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundColor(Theme.brown)
+                        }
+                        HStack(spacing: 6) {
+                            Text("@\(entry.username)")
+                                .font(.system(size: entry.isCurrentUser ? 12 : 16, weight: .semibold, design: .rounded))
+                                .foregroundColor(entry.isCurrentUser ? Theme.textSecondary : Theme.brown)
+                                .fixedSize(horizontal: true, vertical: false)
+                            FounderTag(username: entry.username)
+                        }
+                    }
+
+                    Spacer()
+
+                    Text(format(milliseconds: entry.completedMilliseconds))
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(entry.isCurrentUser ? Theme.amber.opacity(0.14) : Color.clear)
+
+                if entry.id != entries.last?.id {
+                    Divider().opacity(0.25)
+                }
+            }
+        }
+        .background(Theme.cream)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 8) {
+            Text("No individual results yet")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(Theme.brown)
+            Text("Completed solves from this university will appear here.")
+                .font(.system(size: 14, design: .rounded))
+                .foregroundColor(Theme.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity)
+        .background(Theme.cream)
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+    }
+
+    @MainActor
+    private func loadLeaderboard() async {
+        isLoading = entries.isEmpty
+        defer { isLoading = false }
+
+        do {
+            entries = try await SupabaseService.shared.fetchSchoolMembersDailyLeaderboard(
+                schoolKey: schoolKey,
+                puzzleDate: puzzleDate
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func format(milliseconds: Int) -> String {
+        let totalSeconds = Double(milliseconds) / 1_000
+        if totalSeconds < 60 { return String(format: "%.2fs", totalSeconds) }
+        return String(
+            format: "%d:%05.2f",
+            Int(totalSeconds) / 60,
+            totalSeconds.truncatingRemainder(dividingBy: 60)
+        )
     }
 }
 

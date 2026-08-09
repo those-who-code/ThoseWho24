@@ -23,3 +23,6 @@ verify_enabled = true
 
 [functions.send-friend-notification]
 verify_jwt = true
+
+[functions.broadcast-app-update]
+verify_jwt = false

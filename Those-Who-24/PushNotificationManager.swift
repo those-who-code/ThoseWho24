@@ -10,6 +10,7 @@ final class PushNotificationManager {
     private(set) var deviceToken: String?
     private(set) var pendingRoomCode: String?
     private(set) var pendingDailyPuzzle = false
+    private(set) var pendingFriendRequests = false
 
     private let dailyReminderIdentifier = "daily-puzzle-reminder"
     private let dailyReminderDateKey = "scheduledDailyPuzzleReminderUTC"
@@ -47,6 +48,12 @@ final class PushNotificationManager {
     }
 
     func receiveNotification(userInfo: [AnyHashable: Any]) {
+        if userInfo["friend_event"] as? String == "request_received" {
+            pendingFriendRequests = true
+            UIApplication.shared.applicationIconBadgeNumber = 0
+            return
+        }
+
         if userInfo["daily_puzzle"] as? Bool == true {
             guard !DailyPuzzleManager.shared.hasCompletedToday else {
                 pendingDailyPuzzle = false
@@ -73,6 +80,11 @@ final class PushNotificationManager {
 
     func consumeDailyPuzzleReminder() {
         pendingDailyPuzzle = false
+        UIApplication.shared.applicationIconBadgeNumber = 0
+    }
+
+    func consumeFriendRequests() {
+        pendingFriendRequests = false
         UIApplication.shared.applicationIconBadgeNumber = 0
     }
 

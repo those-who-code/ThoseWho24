@@ -12,7 +12,9 @@ struct SettingsView: View {
     @State private var showFriendRequests = false
     @State private var showUniversity = false
     @State private var showDailyGame = false
+    @State private var showOfflineDailyAlert = false
     @State private var daily = DailyPuzzleManager.shared
+    @State private var network = NetworkMonitor.shared
 
     var body: some View {
         ZStack {
@@ -102,9 +104,23 @@ struct SettingsView: View {
             }
         }
         .task {
+            guard network.isConnected else { return }
             await friends.refreshConnections()
             await daily.refreshUniversity()
             await daily.refreshTodayStatus()
+        }
+        .onChange(of: network.isConnected) { _, isConnected in
+            guard isConnected else { return }
+            Task {
+                await friends.refreshConnections()
+                await daily.refreshUniversity()
+                await daily.refreshTodayStatus()
+            }
+        }
+        .alert("You’re Offline", isPresented: $showOfflineDailyAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Connect to the internet to play today’s puzzle.")
         }
         .alert("Reset all stats?", isPresented: $showResetAlert) {
             Button("Reset", role: .destructive) { stats.reset() }
@@ -123,6 +139,10 @@ struct SettingsView: View {
             VStack(spacing: 0) {
                 Button {
                     Haptics.light()
+                    guard network.isConnected else {
+                        showOfflineDailyAlert = true
+                        return
+                    }
                     Task {
                         if await daily.startToday() != nil {
                             showDailyGame = true
@@ -196,9 +216,15 @@ struct SettingsView: View {
                         .clipShape(Circle())
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("@\(friends.username ?? "username")")
-                            .font(.system(size: 19, weight: .bold, design: .rounded))
-                            .foregroundColor(Theme.brown)
+                        HStack(spacing: 6) {
+                            Text("@\(friends.username ?? "username")")
+                                .font(.system(size: 19, weight: .bold, design: .rounded))
+                                .foregroundColor(Theme.brown)
+                                .fixedSize(horizontal: true, vertical: false)
+                            if let username = friends.username {
+                                FounderTag(username: username)
+                            }
+                        }
                         Text("\(friends.friends.count) friend\(friends.friends.count == 1 ? "" : "s")")
                             .font(.system(size: 13, weight: .medium, design: .rounded))
                             .foregroundColor(Theme.textSecondary)

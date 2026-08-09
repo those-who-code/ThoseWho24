@@ -595,6 +595,7 @@ struct ContentView: View {
     var onSettingsTap: (() -> Void)? = nil
     var onDailyTap: (() -> Void)? = nil
     var highlightDailyBanner = false
+    var isOnline = true
 
     var body: some View {
         ZStack {
@@ -610,7 +611,8 @@ struct ContentView: View {
                     onStatsTap: onStatsTap,
                     onSettingsTap: onSettingsTap,
                     onDailyTap: onDailyTap,
-                    highlightDailyBanner: highlightDailyBanner
+                    highlightDailyBanner: highlightDailyBanner,
+                    isOnline: isOnline
                 )
             }
         }
@@ -655,6 +657,7 @@ struct GameView: View {
     var onSettingsTap: (() -> Void)? = nil
     var onDailyTap: (() -> Void)? = nil
     var highlightDailyBanner = false
+    var isOnline = true
     var isDailyPuzzle = false
     var onDailyExit: (() -> Void)? = nil
     @State private var dailyBannerPulse = false
@@ -738,6 +741,8 @@ struct GameView: View {
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .opacity(isOnline ? 1 : 0.5)
+                    .accessibilityHint(isOnline ? "Create or join an online room" : "Internet connection required")
                     Spacer()
                 }
 
@@ -807,6 +812,8 @@ struct GameView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .disabled(!isOnline)
+                .opacity(isOnline ? 1 : 0.5)
                 .scaleEffect(highlightDailyBanner && dailyBannerPulse ? 1.045 : 1)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .onAppear {

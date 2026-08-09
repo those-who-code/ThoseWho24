@@ -37,10 +37,13 @@ final class FriendsManager {
     var pendingRequestCount: Int { incomingRequests.count }
 
     private let service = SupabaseService.shared
+    private let cachedUsernameKey = "cachedUsername"
     private var subscriptionTask: Task<Void, Never>?
     private var didBootstrap = false
 
-    private init() {}
+    private init() {
+        username = UserDefaults.standard.string(forKey: cachedUsernameKey)
+    }
 
     func bootstrap() async {
         guard !didBootstrap else { return }
@@ -55,15 +58,17 @@ final class FriendsManager {
             let id = try await service.ensureAnonymousSession()
             userId = id
             let profile = try await service.fetchProfile(userId: id)
-            username = profile?.username
-
-            if let username, !username.isEmpty {
+            if let fetchedUsername = profile?.username, !fetchedUsername.isEmpty {
+                username = fetchedUsername
+                cacheUsername(fetchedUsername)
                 state = .ready
                 await refreshConnections()
                 startSubscription()
                 PushNotificationManager.shared.requestAuthorizationAndRegister()
                 await registerPendingDeviceToken()
             } else {
+                username = nil
+                UserDefaults.standard.removeObject(forKey: cachedUsernameKey)
                 state = .needsUsername(isLegacyInstall: wasLegacyInstall)
             }
         } catch {
@@ -96,7 +101,12 @@ final class FriendsManager {
 
         do {
             let profile = try await service.setUsername(normalized)
-            username = profile.username
+            guard let savedUsername = profile.username, !savedUsername.isEmpty else {
+                errorMessage = "Your username could not be saved. Please try again."
+                return false
+            }
+            username = savedUsername
+            cacheUsername(savedUsername)
             UserDefaults.standard.set(true, forKey: "completedUsernameOnboarding")
             state = .ready
             await refreshConnections()
@@ -197,6 +207,10 @@ final class FriendsManager {
     private func updateSearchState(userId: UUID, state: String) {
         guard let index = searchResults.firstIndex(where: { $0.userId == userId }) else { return }
         searchResults[index].relationshipState = state
+    }
+
+    private func cacheUsername(_ username: String) {
+        UserDefaults.standard.set(username, forKey: cachedUsernameKey)
     }
 
     private func startSubscription() {

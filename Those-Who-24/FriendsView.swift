@@ -60,9 +60,13 @@ struct FriendsView: View {
                     .font(.system(size: 30, weight: .bold, design: .rounded))
                     .foregroundColor(Theme.brown)
                 if let username = manager.username {
-                    Text("@\(username)")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(Theme.textSecondary)
+                    HStack(spacing: 6) {
+                        Text("@\(username)")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(Theme.textSecondary)
+                            .fixedSize(horizontal: true, vertical: false)
+                        FounderTag(username: username)
+                    }
                 }
             }
             Spacer()
@@ -260,9 +264,13 @@ private struct SearchResultRow: View {
         HStack(spacing: 12) {
             avatar(result.username)
             VStack(alignment: .leading, spacing: 3) {
-                Text("@\(result.username)")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(Theme.brown)
+                HStack(spacing: 6) {
+                    Text("@\(result.username)")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.brown)
+                        .fixedSize(horizontal: true, vertical: false)
+                    FounderTag(username: result.username)
+                }
                 Text(mutualText)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(Theme.textSecondary)
@@ -319,9 +327,13 @@ private struct FriendConnectionCard: View {
         HStack(spacing: 12) {
             avatar(connection.username)
             VStack(alignment: .leading, spacing: 3) {
-                Text("@\(connection.username)")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(Theme.brown)
+                HStack(spacing: 6) {
+                    Text("@\(connection.username)")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.brown)
+                        .fixedSize(horizontal: true, vertical: false)
+                    FounderTag(username: connection.username)
+                }
                 Text(subtitle)
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(Theme.textSecondary)
