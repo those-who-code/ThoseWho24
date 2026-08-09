@@ -90,6 +90,15 @@ class StatsManager: ObservableObject {
         return dailySolves.reduce(0) { $0 + $1.seconds } / Double(dailySolves.count)
     }
 
+    var dailyMedianSeconds: Double? {
+        guard !dailySolves.isEmpty else { return nil }
+        let sorted = dailySolves.map(\.seconds).sorted()
+        let mid = sorted.count / 2
+        return sorted.count % 2 == 0
+            ? (sorted[mid - 1] + sorted[mid]) / 2.0
+            : sorted[mid]
+    }
+
     var currentDailyStreak: Int {
         let dates = Set(dailySolves.compactMap { Self.utcDate(from: $0.puzzleDate) })
         guard !dates.isEmpty else { return 0 }
@@ -320,6 +329,10 @@ struct StatsView: View {
                 StatCard(
                     value: stats.dailyAverageSeconds.map { formatSecs($0) } ?? "—",
                     label: "Average time"
+                )
+                StatCard(
+                    value: stats.dailyMedianSeconds.map { formatSecs($0) } ?? "—",
+                    label: "Median time"
                 )
                 StatCard(
                     value: stats.dailySolves.map(\.seconds).min().map { formatSecs($0) } ?? "—",
