@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		BD17D9E4301ED94B00411D4C /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = BD7BCA0B2FA1C50000BD5B88 /* Supabase */; };
-		BD17D9E5301ED94B00411D4C /* SwiftDotenv in Frameworks */ = {isa = PBXBuildFile; productRef = BD7BCA0C2FA1C50000BD5B88 /* SwiftDotenv */; };
 		BD7BCA082FA1C15500BD5B88 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = BD7BCA072FA1C15500BD5B88 /* Launch Screen.storyboard */; };
 /* End PBXBuildFile section */
 
@@ -31,7 +30,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				BD17D9E5301ED94B00411D4C /* SwiftDotenv in Frameworks */,
 				BD17D9E4301ED94B00411D4C /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -86,7 +84,6 @@
 			name = "Those Who 24";
 			packageProductDependencies = (
 				BD7BCA0B2FA1C50000BD5B88 /* Supabase */,
-				BD7BCA0C2FA1C50000BD5B88 /* SwiftDotenv */,
 			);
 			productName = "Those Who 24";
 			productReference = BD7BC9E02FA1BFF500BD5B88 /* Those Who 24.app */;
@@ -104,6 +101,14 @@
 				TargetAttributes = {
 					BD7BC9DF2FA1BFF500BD5B88 = {
 						CreatedOnToolsVersion = 26.3;
+						SystemCapabilities = {
+							com.apple.SignInWithApple = {
+								enabled = 1;
+							};
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};
@@ -118,7 +123,6 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				BDA9294B2F994B840035F5E5 /* XCRemoteSwiftPackageReference "supabase-swift" */,
-				BDA929722F994E9A0035F5E5 /* XCRemoteSwiftPackageReference "swift-dotenv" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BDA929232F994ABC0035F5E5 /* Products */;
@@ -383,14 +387,6 @@
 				minimumVersion = 2.5.1;
 			};
 		};
-		BDA929722F994E9A0035F5E5 /* XCRemoteSwiftPackageReference "swift-dotenv" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/thebarndog/swift-dotenv";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 2.1.0;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -398,11 +394,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BDA9294B2F994B840035F5E5 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
-		};
-		BD7BCA0C2FA1C50000BD5B88 /* SwiftDotenv */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BDA929722F994E9A0035F5E5 /* XCRemoteSwiftPackageReference "swift-dotenv" */;
-			productName = SwiftDotenv;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

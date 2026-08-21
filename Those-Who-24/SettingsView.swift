@@ -8,11 +8,15 @@ struct SettingsView: View {
     @ObservedObject private var stats = StatsManager.shared
     @State private var friends = FriendsManager.shared
     @State private var showResetAlert = false
+    @State private var showDeleteAccountAlert = false
+    @State private var deleteAccountError: String?
     @State private var showFriends = false
     @State private var showFriendRequests = false
     @State private var showUniversity = false
     @State private var showDailyGame = false
     @State private var showOfflineDailyAlert = false
+    @State private var showRecovery = false
+    @State private var showRecoveryAdmin = false
     @State private var daily = DailyPuzzleManager.shared
     @State private var network = NetworkMonitor.shared
 
@@ -85,6 +89,29 @@ struct SettingsView: View {
                             .buttonStyle(.plain)
                             .padding(.horizontal, 24)
                         }
+
+                        Button {
+                            Haptics.light()
+                            showDeleteAccountAlert = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                if friends.isDeletingAccount {
+                                    ProgressView()
+                                        .tint(Theme.destructiveText)
+                                }
+                                Text(friends.isDeletingAccount ? "Deleting account…" : "Delete account")
+                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                            }
+                            .foregroundColor(Theme.destructiveText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Theme.cream)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(friends.isDeletingAccount || !network.isConnected || friends.userId == nil)
+                        .opacity(network.isConnected ? 1 : 0.55)
+                        .padding(.horizontal, 24)
                     }
                     .padding(.bottom, 32)
                 }
@@ -95,6 +122,12 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showUniversity) {
             UniversitySettingsView(manager: daily)
+        }
+        .sheet(isPresented: $showRecovery) {
+            RecoveryCenterView()
+        }
+        .sheet(isPresented: $showRecoveryAdmin) {
+            RecoveryAdminView()
         }
         .fullScreenCover(isPresented: $showDailyGame) {
             if let puzzle = daily.puzzle {
@@ -127,6 +160,28 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will permanently delete all \(stats.lifetimeSolves) solve records.")
+        }
+        .alert("Delete your account?", isPresented: $showDeleteAccountAlert) {
+            Button("Delete Account", role: .destructive) {
+                Task {
+                    if await friends.deleteAccount() {
+                        onBack()
+                    } else {
+                        deleteAccountError = friends.errorMessage ?? "Your account could not be deleted. Please try again."
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your username, friends, daily history, device registrations, and hosted multiplayer rooms. This cannot be undone.")
+        }
+        .alert("Couldn’t Delete Account", isPresented: Binding(
+            get: { deleteAccountError != nil },
+            set: { if !$0 { deleteAccountError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteAccountError ?? "")
         }
     }
 
@@ -170,6 +225,33 @@ struct SettingsView: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                Divider().opacity(0.35)
+
+                Button {
+                    showRecovery = true
+                } label: {
+                    settingsRow(
+                        icon: "person.crop.circle.badge.questionmark",
+                        title: "Account Recovery",
+                        detail: RecoveryManager.shared.activeRequest?.status.capitalized ?? ""
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if friends.isAdmin, friends.username == "priscillaye" {
+                    Divider().opacity(0.35)
+                    Button {
+                        showRecoveryAdmin = true
+                    } label: {
+                        settingsRow(
+                            icon: "lock.shield.fill",
+                            title: "Recovery Admin",
+                            detail: "Private"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .background(Theme.cream)
             .clipShape(RoundedRectangle(cornerRadius: 18))

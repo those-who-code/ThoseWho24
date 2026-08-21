@@ -18,6 +18,8 @@ final class DailyPuzzleManager {
     private let firstCompletionKey = "hasCompletedFirstDailyPuzzle"
     private let solutionDateKey = "dailyPuzzleSolutionDate"
     private let solutionMovesKey = "dailyPuzzleSolutionMoves"
+    private let pendingSubmissionDateKey = "pendingDailyPuzzleSubmissionDate"
+    private let pendingSubmissionMovesKey = "pendingDailyPuzzleSubmissionMoves"
     private let cachedUniversityKey = "cachedUniversitySchoolKey"
 
     private init() {
@@ -67,6 +69,10 @@ final class DailyPuzzleManager {
             }
             if puzzle?.completedMilliseconds != nil {
                 UserDefaults.standard.set(true, forKey: firstCompletionKey)
+                clearPendingSubmission(for: puzzle?.puzzleDate)
+            } else if let puzzle,
+                      let pending = pendingSubmission(for: puzzle.puzzleDate) {
+                _ = await submitToday(solution: pending)
             }
             if let puzzle, let milliseconds = puzzle.completedMilliseconds {
                 StatsManager.shared.recordDailySolve(
@@ -84,12 +90,16 @@ final class DailyPuzzleManager {
     }
 
     func submitToday(solution: String) async -> Bool {
-        guard let puzzle else { return false }
+        guard let puzzle, !isSubmitting else { return false }
+        storePendingSubmission(solution, for: puzzle.puzzleDate)
         isSubmitting = true
         errorMessage = nil
         defer { isSubmitting = false }
         do {
-            let milliseconds = try await service.submitDailyPuzzle(puzzleDate: puzzle.puzzleDate)
+            let milliseconds = try await service.submitDailyPuzzle(
+                puzzleDate: puzzle.puzzleDate,
+                solution: solution
+            )
             self.puzzle = DailyPuzzleState(
                 puzzleDate: puzzle.puzzleDate,
                 numbers: puzzle.numbers,
@@ -97,6 +107,7 @@ final class DailyPuzzleManager {
                 completedMilliseconds: milliseconds
             )
             storeSolution(solution, for: puzzle.puzzleDate)
+            clearPendingSubmission(for: puzzle.puzzleDate)
             StatsManager.shared.recordDailySolve(
                 puzzleDate: puzzle.puzzleDate,
                 milliseconds: milliseconds,
@@ -169,6 +180,25 @@ final class DailyPuzzleManager {
         UserDefaults.standard.set(moves, forKey: solutionMovesKey)
         solution = moves
     }
+
+    func pendingSubmission(for puzzleDate: String) -> String? {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: pendingSubmissionDateKey) == puzzleDate else { return nil }
+        return defaults.string(forKey: pendingSubmissionMovesKey)
+    }
+
+    private func storePendingSubmission(_ moves: String, for puzzleDate: String) {
+        let defaults = UserDefaults.standard
+        defaults.set(puzzleDate, forKey: pendingSubmissionDateKey)
+        defaults.set(moves, forKey: pendingSubmissionMovesKey)
+    }
+
+    private func clearPendingSubmission(for puzzleDate: String?) {
+        let defaults = UserDefaults.standard
+        guard puzzleDate == nil || defaults.string(forKey: pendingSubmissionDateKey) == puzzleDate else { return }
+        defaults.removeObject(forKey: pendingSubmissionDateKey)
+        defaults.removeObject(forKey: pendingSubmissionMovesKey)
+    }
 }
 
 struct DailyPuzzleView: View {
@@ -180,6 +210,7 @@ struct DailyPuzzleView: View {
     @State private var isConfigured = false
     @State private var showResults = false
     @State private var showConfetti = false
+    @State private var isAwaitingSaveRetry = false
 
     var body: some View {
         ZStack {
@@ -191,6 +222,34 @@ struct DailyPuzzleView: View {
                     onDone: onDismiss
                 )
                 .transition(.opacity)
+            } else if isAwaitingSaveRetry {
+                VStack(spacing: 18) {
+                    Image(systemName: "icloud.and.arrow.up")
+                        .font(.system(size: 38))
+                        .foregroundColor(Theme.amber)
+                    Text("Your solve is safe on this device")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(Theme.brown)
+                        .multilineTextAlignment(.center)
+                    Text("Reconnect and retry. You do not need to solve the puzzle again.")
+                        .font(.system(size: 15, weight: .medium, design: .rounded))
+                        .foregroundColor(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
+                    Button("Retry Save") { retryPendingSubmission() }
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .foregroundColor(Theme.cardSelectedText)
+                        .background(Theme.buttonPrimary)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    Button("Exit for Now", action: onDismiss)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundColor(Theme.textSecondary)
+                }
+                .padding(28)
+                .background(Theme.cardSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+                .padding(.horizontal, 28)
             } else if isConfigured {
                 GameView(
                     vm: vm,
@@ -226,6 +285,13 @@ struct DailyPuzzleView: View {
                 return
             }
 
+            if manager.pendingSubmission(for: puzzle.puzzleDate) != nil {
+                isConfigured = true
+                isAwaitingSaveRetry = true
+                retryPendingSubmission()
+                return
+            }
+
             vm.setupDailyPuzzle(
                 numbers: puzzle.numbers,
                 startedAt: puzzle.startedAt ?? Date()
@@ -233,27 +299,47 @@ struct DailyPuzzleView: View {
                 let solution = vm.playerMoves.map {
                     "\($0.firstIdx):\($0.secondIdx):\($0.op):\($0.resultLabel)"
                 }.joined(separator: ",")
-                Task {
-                    if await manager.submitToday(solution: solution) {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showResults = true
-                        }
-                        showConfetti = true
-                        try? await Task.sleep(for: .seconds(1.75))
-                        showConfetti = false
-                    }
-                }
+                Task { await saveAndShowResults(solution: solution) }
             }
             isConfigured = true
+        }
+        .onChange(of: manager.hasCompletedToday) { _, completed in
+            guard completed, manager.puzzle?.puzzleDate == puzzle.puzzleDate else { return }
+            isAwaitingSaveRetry = false
+            withAnimation(.easeInOut(duration: 0.25)) {
+                showResults = true
+            }
         }
         .alert("Couldn’t save your solve", isPresented: Binding(
             get: { manager.errorMessage != nil },
             set: { if !$0 { manager.errorMessage = nil } }
         )) {
+            if manager.pendingSubmission(for: puzzle.puzzleDate) != nil {
+                Button("Try Again") { retryPendingSubmission() }
+            }
             Button("OK", role: .cancel) {}
         } message: {
             Text(manager.errorMessage ?? "")
         }
+    }
+
+    private func retryPendingSubmission() {
+        guard let pending = manager.pendingSubmission(for: puzzle.puzzleDate) else { return }
+        Task { await saveAndShowResults(solution: pending) }
+    }
+
+    private func saveAndShowResults(solution: String) async {
+        guard await manager.submitToday(solution: solution) else {
+            isAwaitingSaveRetry = true
+            return
+        }
+        isAwaitingSaveRetry = false
+        withAnimation(.easeInOut(duration: 0.25)) {
+            showResults = true
+        }
+        showConfetti = true
+        try? await Task.sleep(for: .seconds(1.75))
+        showConfetti = false
     }
 }
 

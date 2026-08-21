@@ -38,13 +38,32 @@ class StatsManager: ObservableObject {
     }
 
     func recordDailySolve(puzzleDate: String, milliseconds: Int, numbers: [Int]) {
-        guard !dailySolves.contains(where: { $0.puzzleDate == puzzleDate }) else { return }
-        dailySolves.append(DailySolveRecord(
+        let record = DailySolveRecord(
             puzzleDate: puzzleDate,
             completedAt: Date(),
             seconds: Double(milliseconds) / 1000,
             numbers: numbers
-        ))
+        )
+        if let index = dailySolves.firstIndex(where: { $0.puzzleDate == puzzleDate }) {
+            guard dailySolves[index].seconds == 0 else { return }
+            dailySolves[index] = record
+        } else {
+            dailySolves.append(record)
+        }
+        dailySolves.sort { $0.puzzleDate < $1.puzzleDate }
+        saveDailySolves()
+    }
+
+    func mergeServerDailyCompletionDates(_ dates: [String]) {
+        let existing = Set(dailySolves.map(\.puzzleDate))
+        for date in dates where !existing.contains(date) {
+            dailySolves.append(DailySolveRecord(
+                puzzleDate: date,
+                completedAt: Self.utcDate(from: date) ?? Date(),
+                seconds: 0,
+                numbers: []
+            ))
+        }
         dailySolves.sort { $0.puzzleDate < $1.puzzleDate }
         saveDailySolves()
     }
@@ -86,13 +105,14 @@ class StatsManager: ObservableObject {
     }
 
     var dailyAverageSeconds: Double? {
-        guard !dailySolves.isEmpty else { return nil }
-        return dailySolves.reduce(0) { $0 + $1.seconds } / Double(dailySolves.count)
+        let timed = dailySolves.filter { $0.seconds > 0 }
+        guard !timed.isEmpty else { return nil }
+        return timed.reduce(0) { $0 + $1.seconds } / Double(timed.count)
     }
 
     var dailyMedianSeconds: Double? {
-        guard !dailySolves.isEmpty else { return nil }
-        let sorted = dailySolves.map(\.seconds).sorted()
+        let sorted = dailySolves.map(\.seconds).filter { $0 > 0 }.sorted()
+        guard !sorted.isEmpty else { return nil }
         let mid = sorted.count / 2
         return sorted.count % 2 == 0
             ? (sorted[mid - 1] + sorted[mid]) / 2.0
@@ -335,7 +355,7 @@ struct StatsView: View {
                     label: "Median time"
                 )
                 StatCard(
-                    value: stats.dailySolves.map(\.seconds).min().map { formatSecs($0) } ?? "—",
+                    value: stats.dailySolves.map(\.seconds).filter { $0 > 0 }.min().map { formatSecs($0) } ?? "—",
                     label: "Best daily"
                 )
             }

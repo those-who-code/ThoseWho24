@@ -19,6 +19,53 @@ supabase functions deploy send-friend-notification
 Enable **Anonymous Sign-Ins** under Authentication → Providers in the Supabase
 dashboard.
 
+## Sign in with Apple and account migration
+
+Before releasing the Apple-account migration:
+
+1. Enable the **Apple** provider in Supabase Authentication → Providers and add
+   `priscillaye.Those-Who-24` as an allowed client ID.
+2. Enable **Manual identity linking**. Existing anonymous accounts use native
+   Apple ID-token linking so their current UUID, username, and friends remain
+   intact.
+3. Enable **Sign in with Apple** for the App ID in the Apple Developer portal
+   and refresh the provisioning profiles. The Xcode capability and entitlement
+   are already present in this repository.
+4. Confirm the hosted Auth service includes the Apple ID-token security fix
+   from Supabase Auth 2.185.0 or newer.
+5. Apply `20260820010000_apple_accounts_and_recovery.sql`. It snapshots the
+   current `@priscillaye` UUID into `recovery_admins`; admin authorization uses
+   that server-side UUID, never the editable username.
+
+New users authenticate with Apple before choosing a username. Existing users
+with a username link Apple in place. Recovery requests and approvals remain
+inside the app; approved recovery atomically moves the old username, friend
+graph, university, devices, and permanent daily completion dates to the
+requester's Apple-backed account.
+
+If Apple linking reports that the identity already belongs to another account,
+the migration screen now offers **Sign in to an existing account**. This signs
+out locally without deleting the anonymous profile; after Apple sign-in, the
+normal recovery flow can restore that profile.
+
+## Verified daily solves and multiplayer liveness
+
+Migration `20260821020000_fix_high_severity_findings.sql` replaces the legacy
+one-argument daily-submit RPC with a two-argument endpoint that requires the
+client's complete three-move proof. PostgreSQL replays the proof with exact
+fraction arithmetic before recording a time. The same validator protects
+multiplayer wins, and completion history is now server-authored rather than
+accepting arbitrary dates uploaded by a client.
+
+This migration intentionally makes older app builds fail closed when submitting
+the daily puzzle. Coordinate the database push with release of the updated app;
+do not ship the new client before the migration is applied.
+
+Multiplayer clients heartbeat every 15 seconds. A guest closes a room after the
+host has been absent for 45 seconds, while a five-minute database sweep closes
+empty rooms whose host has been absent for at least two minutes. Finished rooms
+retain the existing 24-hour deletion window.
+
 ## Configure APNs
 
 Create an Apple Push Notification authentication key in the Apple Developer

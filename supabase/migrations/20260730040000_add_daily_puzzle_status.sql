@@ -25,6 +25,5 @@ begin
   );
 end;
 $$;
-
 revoke all on function public.get_daily_puzzle_status() from public;
 grant execute on function public.get_daily_puzzle_status() to authenticated;
