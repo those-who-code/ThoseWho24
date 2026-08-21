@@ -223,11 +223,11 @@ final class SupabaseService {
 
     // MARK: - Heartbeat
 
-    func pingPlayer(playerId: UUID) async {
-        _ = try? await client.from("players")
-            .update(["last_ping": ISO8601DateFormatter().string(from: Date())])
-            .eq("id", value: playerId.uuidString)
-            .execute()
+    func pingPlayer(playerId: UUID, roomId: UUID) async {
+        _ = try? await client.rpc(
+            "heartbeat_room_player",
+            params: HeartbeatPlayerParams(playerId: playerId, roomId: roomId)
+        ).execute()
     }
 
     // MARK: - Identity
@@ -256,6 +256,18 @@ final class SupabaseService {
                 nonce: nonce
             )
         ).user
+    }
+
+    func signOutLocally() async {
+        try? await client.auth.signOut(scope: .local)
+    }
+
+    func deleteMyAccount() async throws {
+        try await client.rpc("delete_my_account").execute()
+        // The database deletion invalidates the remote user. Remove the cached
+        // session even if the subsequent logout endpoint reports that the user
+        // no longer exists.
+        try? await client.auth.signOut(scope: .local)
     }
 
     func fetchProfile(userId: UUID) async throws -> ProfileRow? {
@@ -288,10 +300,10 @@ final class SupabaseService {
             .value
     }
 
-    func submitDailyPuzzle(puzzleDate: String) async throws -> Int {
+    func submitDailyPuzzle(puzzleDate: String, solution: String) async throws -> Int {
         try await client.rpc(
             "submit_daily_puzzle",
-            params: SubmitDailyPuzzleParams(puzzleDate: puzzleDate)
+            params: SubmitDailyPuzzleParams(puzzleDate: puzzleDate, solution: solution)
         )
         .execute()
         .value
@@ -302,13 +314,6 @@ final class SupabaseService {
             .execute()
             .value
         return rows.map(\.puzzleDate)
-    }
-
-    func mergeDailyCompletionDates(_ dates: [String]) async throws {
-        try await client.rpc(
-            "merge_daily_completion_dates",
-            params: MergeDailyCompletionDatesParams(dates: dates)
-        ).execute()
     }
 
     func fetchSchoolDailyLeaderboard(puzzleDate: String? = nil) async throws -> [SchoolDailyLeaderboardEntry] {

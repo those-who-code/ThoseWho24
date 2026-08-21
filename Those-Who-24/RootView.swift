@@ -314,6 +314,64 @@ struct WinnerMove {
     let result: String
 }
 
+private enum WinnerMoveParser {
+    static func parse(_ solution: String, numbers: [Int]) -> [WinnerMove] {
+        guard numbers.count == 4,
+              let separator = solution.firstIndex(of: "|") else { return [] }
+        let encoded = solution[solution.index(after: separator)...]
+        let tokens = encoded.split(separator: ",", omittingEmptySubsequences: false)
+        guard tokens.count == 3 else { return [] }
+
+        var cards: [Fraction?] = numbers.map { Fraction($0) }
+        var moves: [WinnerMove] = []
+
+        for token in tokens {
+            let parts = token.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 4,
+                  let first = Int(parts[0]), let second = Int(parts[1]),
+                  cards.indices.contains(first), cards.indices.contains(second),
+                  first != second,
+                  let lhs = cards[first], let rhs = cards[second],
+                  let claimedResult = fraction(from: String(parts[3])) else { return [] }
+
+            let op = String(parts[2])
+            let result: Fraction
+            switch op {
+            case MathOperator.add.rawValue: result = lhs + rhs
+            case MathOperator.subtract.rawValue: result = lhs - rhs
+            case MathOperator.multiply.rawValue: result = lhs * rhs
+            case MathOperator.divide.rawValue:
+                guard let quotient = lhs / rhs else { return [] }
+                result = quotient
+            default: return []
+            }
+            guard result == claimedResult else { return [] }
+
+            cards[first] = nil
+            cards[second] = result
+            moves.append(WinnerMove(
+                firstIdx: first,
+                secondIdx: second,
+                op: op,
+                result: result.display
+            ))
+        }
+
+        guard cards.compactMap({ $0 }).count == 1,
+              cards.compactMap({ $0 }).first == Fraction(24) else { return [] }
+        return moves
+    }
+
+    private static func fraction(from value: String) -> Fraction? {
+        let pieces = value.split(separator: "/", omittingEmptySubsequences: false)
+        guard pieces.count == 1 || pieces.count == 2,
+              let numerator = Int(pieces[0]) else { return nil }
+        if pieces.count == 1 { return Fraction(numerator) }
+        guard let denominator = Int(pieces[1]), denominator > 0 else { return nil }
+        return Fraction(numerator, denominator)
+    }
+}
+
 // MARK: - Round Result Overlay
 
 struct RoundResultOverlay: View {
@@ -332,19 +390,14 @@ struct RoundResultOverlay: View {
     }
 
     private var parsedMoves: [WinnerMove] {
-        guard let indexPart = winnerSolution.components(separatedBy: "|").dropFirst().first else { return [] }
-        return indexPart.components(separatedBy: ",").compactMap { token in
-            let parts = token.components(separatedBy: ":")
-            guard parts.count >= 4, let f = Int(parts[0]), let s = Int(parts[1]) else { return nil }
-            return WinnerMove(firstIdx: f, secondIdx: s, op: parts[2], result: parts[3])
-        }
+        WinnerMoveParser.parse(winnerSolution, numbers: numbers)
     }
 
     private var computedExpression: String {
         guard !parsedMoves.isEmpty, numbers.count == 4 else { return displayPart }
         var exprs: [String?] = numbers.map { "\($0)" }
         for m in parsedMoves {
-            guard m.firstIdx < exprs.count, m.secondIdx < exprs.count,
+            guard exprs.indices.contains(m.firstIdx), exprs.indices.contains(m.secondIdx),
                   let a = exprs[m.firstIdx], let b = exprs[m.secondIdx] else { continue }
             exprs[m.secondIdx] = "(\(a) \(m.op) \(b))"
             exprs[m.firstIdx] = nil

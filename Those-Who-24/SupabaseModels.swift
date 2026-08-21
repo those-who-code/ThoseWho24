@@ -396,30 +396,33 @@ struct FriendResponseParams: Sendable {
 
 struct SubmitDailyPuzzleParams: Sendable {
     let puzzleDate: String
+    let solution: String
 }
 
 extension SubmitDailyPuzzleParams: Encodable {
-    enum CodingKeys: String, CodingKey { case puzzleDate = "p_puzzle_date" }
+    enum CodingKeys: String, CodingKey {
+        case puzzleDate = "p_puzzle_date"
+        case solution = "p_solution"
+    }
     nonisolated func encode(to encoder: any Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(puzzleDate, forKey: .puzzleDate)
+        try c.encode(solution, forKey: .solution)
+    }
+}
+
+struct HeartbeatPlayerParams: Sendable, Encodable {
+    let playerId: UUID
+    let roomId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case playerId = "p_player_id"
+        case roomId = "p_room_id"
     }
 }
 
 struct DailyLeaderboardParams: Sendable {
     let puzzleDate: String?
-}
-
-struct MergeDailyCompletionDatesParams: Sendable {
-    let dates: [String]
-}
-
-extension MergeDailyCompletionDatesParams: Encodable {
-    enum CodingKeys: String, CodingKey { case dates = "p_dates" }
-    nonisolated func encode(to encoder: any Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(dates, forKey: .dates)
-    }
 }
 
 struct CreateRecoveryRequestParams: Sendable {

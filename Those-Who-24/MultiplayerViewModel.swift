@@ -67,7 +67,7 @@ class MultiplayerViewModel {
             currentRoom = room
             players = [player]
             beginSubscriptions(roomId: room.id)
-            startHeartbeat(playerId: player.id)
+            startHeartbeat(playerId: player.id, roomId: room.id)
             state = .waitingRoom
         } catch {
             errorMessage = error.localizedDescription
@@ -95,7 +95,7 @@ class MultiplayerViewModel {
             currentRoom = room
             players = try await service.fetchPlayers(roomId: room.id)
             beginSubscriptions(roomId: room.id)
-            startHeartbeat(playerId: player.id)
+            startHeartbeat(playerId: player.id, roomId: room.id)
             state = .waitingRoom
         } catch {
             errorMessage = error.localizedDescription
@@ -269,12 +269,12 @@ class MultiplayerViewModel {
 
     // MARK: - Heartbeat
 
-    private func startHeartbeat(playerId: UUID) {
+    private func startHeartbeat(playerId: UUID, roomId: UUID) {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
-                await self?.service.pingPlayer(playerId: playerId)
+                await self?.service.pingPlayer(playerId: playerId, roomId: roomId)
             }
         }
     }

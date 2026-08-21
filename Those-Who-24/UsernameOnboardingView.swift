@@ -6,6 +6,7 @@ import Security
 struct SocialGateOverlay: View {
     @Bindable var friends: FriendsManager
     @State private var showRecovery = false
+    @State private var showMigrationExitConfirmation = false
 
     var body: some View {
         switch friends.state {
@@ -106,6 +107,13 @@ struct SocialGateOverlay: View {
                         .foregroundColor(Theme.destructiveText)
                         .multilineTextAlignment(.center)
                 }
+                if linkCurrentAccount {
+                    Button("Sign in to an existing account") {
+                        showMigrationExitConfirmation = true
+                    }
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(Theme.textSecondary)
+                }
                 Button("I lost a previous username") { showRecovery = true }
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundColor(Theme.textSecondary)
@@ -118,6 +126,18 @@ struct SocialGateOverlay: View {
             .padding(.horizontal, 28)
         }
         .sheet(isPresented: $showRecovery) { RecoveryCenterView() }
+        .confirmationDialog(
+            "Leave @\(friends.username ?? "this profile")?",
+            isPresented: $showMigrationExitConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Sign In to Existing Account", role: .destructive) {
+                Task { await friends.leaveAnonymousMigration() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This profile will remain on the server and can be recovered after you sign in. Nothing is deleted.")
+        }
     }
 
     private func usernameCard(title: String, message: String) -> some View {

@@ -24,6 +24,7 @@ final class FriendsManager {
     private(set) var isSearching = false
     private(set) var isSavingUsername = false
     private(set) var isAuthenticatingWithApple = false
+    private(set) var isDeletingAccount = false
     private(set) var isAppleBacked = false
     private(set) var isOffline = false
     private(set) var isAdmin = false
@@ -141,13 +142,30 @@ final class FriendsManager {
     }
 
     private func syncDailyCompletionHistory() async {
-        let localDates = StatsManager.shared.dailySolves.map(\.puzzleDate)
-        if !localDates.isEmpty {
-            try? await service.mergeDailyCompletionDates(localDates)
-        }
         if let dates = try? await service.fetchDailyCompletionDates() {
             StatsManager.shared.mergeServerDailyCompletionDates(dates)
         }
+    }
+
+    func leaveAnonymousMigration() async {
+        guard case .needsAppleMigration = state, !isAuthenticatingWithApple else { return }
+        subscriptionTask?.cancel()
+        subscriptionTask = nil
+        await service.signOutLocally()
+
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: cachedUserIdKey)
+        defaults.removeObject(forKey: cachedUsernameKey)
+        defaults.removeObject(forKey: cachedAnonymousKey)
+        userId = nil
+        username = nil
+        connections = []
+        searchResults = []
+        isAppleBacked = false
+        isOffline = false
+        isAdmin = false
+        errorMessage = nil
+        state = .needsAppleSignIn
     }
 
     func createUsername(_ rawUsername: String) async -> Bool {
@@ -195,6 +213,60 @@ final class FriendsManager {
         isAppleBacked = true
         cacheProfile(userId: profile.id, username: profile.username, isAnonymous: false)
         await becomeReady()
+    }
+
+    func deleteAccount() async -> Bool {
+        guard userId != nil, !isDeletingAccount else { return false }
+        guard !isOffline else {
+            errorMessage = "Connect to the internet before deleting your account."
+            return false
+        }
+
+        isDeletingAccount = true
+        errorMessage = nil
+        defer { isDeletingAccount = false }
+
+        do {
+            try await service.deleteMyAccount()
+            subscriptionTask?.cancel()
+            subscriptionTask = nil
+
+            let defaults = UserDefaults.standard
+            [
+                cachedUserIdKey,
+                cachedUsernameKey,
+                cachedAnonymousKey,
+                "completedUsernameOnboarding",
+                "hasCompletedFirstDailyPuzzle",
+                "dailyPuzzleSolutionDate",
+                "dailyPuzzleSolutionMoves",
+                "pendingDailyPuzzleSubmissionDate",
+                "pendingDailyPuzzleSubmissionMoves",
+                "cachedUniversitySchoolKey",
+                "scheduledDailyPuzzleReminderUTC"
+            ].forEach { defaults.removeObject(forKey: $0) }
+
+            StatsManager.shared.reset()
+            PushNotificationManager.shared.cancelDailyPuzzleReminder()
+            PushNotificationManager.shared.consumeRoomInvite()
+            PushNotificationManager.shared.consumeDailyPuzzleReminder()
+            PushNotificationManager.shared.consumeFriendRequests()
+
+            userId = nil
+            username = nil
+            connections = []
+            searchResults = []
+            isAppleBacked = false
+            isOffline = false
+            isAdmin = false
+            didBootstrap = true
+            state = .needsAppleSignIn
+            UIApplication.shared.applicationIconBadgeNumber = 0
+            return true
+        } catch {
+            errorMessage = friendlyMessage(for: error)
+            return false
+        }
     }
 
     func refreshConnections() async {
