@@ -11,7 +11,6 @@ as $$
   from public.profiles p
   where p.id = auth.uid();
 $$;
-
 create or replace function public.set_university(p_school_key text)
 returns jsonb
 language plpgsql
@@ -62,7 +61,6 @@ begin
   return public.get_university_status();
 end;
 $$;
-
 revoke all on function public.sync_university_email() from public;
 drop function public.sync_university_email();
 alter table public.profiles

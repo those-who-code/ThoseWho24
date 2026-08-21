@@ -1,9 +1,12 @@
 import Foundation
 import SwiftUI
+import Supabase
 
 enum SocialBootstrapState: Equatable {
     case loading
-    case needsUsername(isLegacyInstall: Bool)
+    case needsAppleSignIn
+    case needsAppleMigration(username: String)
+    case needsUsername
     case ready
     case failed(String)
 }
@@ -20,6 +23,10 @@ final class FriendsManager {
     private(set) var searchResults: [FriendSearchResult] = []
     private(set) var isSearching = false
     private(set) var isSavingUsername = false
+    private(set) var isAuthenticatingWithApple = false
+    private(set) var isAppleBacked = false
+    private(set) var isOffline = false
+    private(set) var isAdmin = false
     var errorMessage: String?
 
     var friends: [FriendConnectionRow] {
@@ -37,42 +44,41 @@ final class FriendsManager {
     var pendingRequestCount: Int { incomingRequests.count }
 
     private let service = SupabaseService.shared
-    private let cachedUsernameKey = "cachedUsername"
     private var subscriptionTask: Task<Void, Never>?
     private var didBootstrap = false
+    private let cachedUserIdKey = "cachedSocialUserId"
+    private let cachedUsernameKey = "cachedSocialUsername"
+    private let cachedAnonymousKey = "cachedSocialUserWasAnonymous"
 
-    private init() {
-        username = UserDefaults.standard.string(forKey: cachedUsernameKey)
-    }
+    private init() {}
 
     func bootstrap() async {
         guard !didBootstrap else { return }
         didBootstrap = true
 
-        let defaults = UserDefaults.standard
-        let wasLegacyInstall =
-            defaults.object(forKey: "selectedTheme") != nil ||
-            defaults.object(forKey: "solveRecords") != nil
+        guard service.cachedUser != nil else {
+            state = .needsAppleSignIn
+            return
+        }
 
         do {
-            let id = try await service.ensureAnonymousSession()
-            userId = id
-            let profile = try await service.fetchProfile(userId: id)
-            if let fetchedUsername = profile?.username, !fetchedUsername.isEmpty {
-                username = fetchedUsername
-                cacheUsername(fetchedUsername)
-                state = .ready
-                await refreshConnections()
-                startSubscription()
-                PushNotificationManager.shared.requestAuthorizationAndRegister()
-                await registerPendingDeviceToken()
-            } else {
-                username = nil
-                UserDefaults.standard.removeObject(forKey: cachedUsernameKey)
-                state = .needsUsername(isLegacyInstall: wasLegacyInstall)
-            }
+            let user = try await service.validatedUser()
+            try await configureAuthenticatedUser(user)
         } catch {
-            state = .failed(friendlyMessage(for: error))
+            // A network failure must never destroy an otherwise recoverable
+            // session. Use the last server-confirmed profile for offline play.
+            let defaults = UserDefaults.standard
+            if let idString = defaults.string(forKey: cachedUserIdKey),
+               let id = UUID(uuidString: idString),
+               let cachedUsername = defaults.string(forKey: cachedUsernameKey) {
+                userId = id
+                username = cachedUsername
+                isAppleBacked = !defaults.bool(forKey: cachedAnonymousKey)
+                isOffline = true
+                state = .ready
+            } else {
+                state = .failed(friendlyMessage(for: error))
+            }
         }
     }
 
@@ -80,6 +86,68 @@ final class FriendsManager {
         didBootstrap = false
         state = .loading
         await bootstrap()
+    }
+
+    func continueWithApple(idToken: String, nonce: String, linkCurrentAccount: Bool) async {
+        guard !isAuthenticatingWithApple else { return }
+        isAuthenticatingWithApple = true
+        errorMessage = nil
+        defer { isAuthenticatingWithApple = false }
+        do {
+            let user = try await (linkCurrentAccount
+                ? service.linkAppleIdentity(idToken: idToken, nonce: nonce)
+                : service.signInWithApple(idToken: idToken, nonce: nonce))
+            try await configureAuthenticatedUser(user)
+        } catch {
+            errorMessage = friendlyMessage(for: error)
+        }
+    }
+
+    private func configureAuthenticatedUser(_ user: User) async throws {
+        let profile = try await service.fetchProfile(userId: user.id)
+        userId = user.id
+        username = profile?.username
+        isAppleBacked = !user.isAnonymous
+        isOffline = false
+        cacheProfile(userId: user.id, username: profile?.username, isAnonymous: user.isAnonymous)
+
+        if user.isAnonymous, let username = profile?.username, !username.isEmpty {
+            state = .needsAppleMigration(username: username)
+        } else if user.isAnonymous {
+            state = .needsAppleSignIn
+        } else if profile?.username?.isEmpty != false {
+            state = .needsUsername
+        } else {
+            await becomeReady()
+        }
+    }
+
+    private func becomeReady() async {
+        state = .ready
+        await refreshConnections()
+        startSubscription()
+        PushNotificationManager.shared.requestAuthorizationAndRegister()
+        await registerPendingDeviceToken()
+        isAdmin = (try? await service.isRecoveryAdmin()) ?? false
+        await syncDailyCompletionHistory()
+        await RecoveryManager.shared.refreshMine()
+    }
+
+    private func cacheProfile(userId: UUID, username: String?, isAnonymous: Bool) {
+        let defaults = UserDefaults.standard
+        defaults.set(userId.uuidString, forKey: cachedUserIdKey)
+        defaults.set(username, forKey: cachedUsernameKey)
+        defaults.set(isAnonymous, forKey: cachedAnonymousKey)
+    }
+
+    private func syncDailyCompletionHistory() async {
+        let localDates = StatsManager.shared.dailySolves.map(\.puzzleDate)
+        if !localDates.isEmpty {
+            try? await service.mergeDailyCompletionDates(localDates)
+        }
+        if let dates = try? await service.fetchDailyCompletionDates() {
+            StatsManager.shared.mergeServerDailyCompletionDates(dates)
+        }
     }
 
     func createUsername(_ rawUsername: String) async -> Bool {
@@ -99,6 +167,11 @@ final class FriendsManager {
         errorMessage = nil
         defer { isSavingUsername = false }
 
+        guard isAppleBacked else {
+            errorMessage = "Sign in with Apple before creating a username."
+            return false
+        }
+
         do {
             let profile = try await service.setUsername(normalized)
             guard let savedUsername = profile.username, !savedUsername.isEmpty else {
@@ -106,17 +179,22 @@ final class FriendsManager {
                 return false
             }
             username = savedUsername
-            cacheUsername(savedUsername)
+            cacheProfile(userId: profile.id, username: savedUsername, isAnonymous: false)
             UserDefaults.standard.set(true, forKey: "completedUsernameOnboarding")
-            state = .ready
-            await refreshConnections()
-            startSubscription()
-            PushNotificationManager.shared.requestAuthorizationAndRegister()
+            await becomeReady()
             return true
         } catch {
             errorMessage = friendlyMessage(for: error)
             return false
         }
+    }
+
+    func didCompleteRecovery(_ profile: ProfileRow) async {
+        userId = profile.id
+        username = profile.username
+        isAppleBacked = true
+        cacheProfile(userId: profile.id, username: profile.username, isAnonymous: false)
+        await becomeReady()
     }
 
     func refreshConnections() async {
@@ -207,10 +285,6 @@ final class FriendsManager {
     private func updateSearchState(userId: UUID, state: String) {
         guard let index = searchResults.firstIndex(where: { $0.userId == userId }) else { return }
         searchResults[index].relationshipState = state
-    }
-
-    private func cacheUsername(_ username: String) {
-        UserDefaults.standard.set(username, forKey: cachedUsernameKey)
     }
 
     private func startSubscription() {

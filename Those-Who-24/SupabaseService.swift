@@ -31,7 +31,7 @@ final class SupabaseService {
 
     func createRoom(displayName: String) async throws -> (room: RoomRow, player: PlayerRow) {
         let playerId = UUID()
-        let hostUserId = try await ensureAnonymousSession()
+        let hostUserId = try await validatedUser().id
 
         // Try inserting room with generated code; retry on unique conflict
         var room: RoomRow?
@@ -232,15 +232,30 @@ final class SupabaseService {
 
     // MARK: - Identity
 
-    func ensureAnonymousSession() async throws -> UUID {
-        if client.auth.currentUser != nil {
-            do {
-                return try await client.auth.session.user.id
-            } catch {
-                try? await client.auth.signOut()
-            }
-        }
-        return try await client.auth.signInAnonymously().user.id
+    var cachedUser: User? { client.auth.currentUser }
+
+    func validatedUser() async throws -> User {
+        try await client.auth.session.user
+    }
+
+    func signInWithApple(idToken: String, nonce: String) async throws -> User {
+        try await client.auth.signInWithIdToken(
+            credentials: OpenIDConnectCredentials(
+                provider: .apple,
+                idToken: idToken,
+                nonce: nonce
+            )
+        ).user
+    }
+
+    func linkAppleIdentity(idToken: String, nonce: String) async throws -> User {
+        try await client.auth.linkIdentityWithIdToken(
+            credentials: OpenIDConnectCredentials(
+                provider: .apple,
+                idToken: idToken,
+                nonce: nonce
+            )
+        ).user
     }
 
     func fetchProfile(userId: UUID) async throws -> ProfileRow? {
@@ -280,6 +295,20 @@ final class SupabaseService {
         )
         .execute()
         .value
+    }
+
+    func fetchDailyCompletionDates() async throws -> [String] {
+        let rows: [DailyCompletionDate] = try await client.rpc("list_daily_completion_dates")
+            .execute()
+            .value
+        return rows.map(\.puzzleDate)
+    }
+
+    func mergeDailyCompletionDates(_ dates: [String]) async throws {
+        try await client.rpc(
+            "merge_daily_completion_dates",
+            params: MergeDailyCompletionDatesParams(dates: dates)
+        ).execute()
     }
 
     func fetchSchoolDailyLeaderboard(puzzleDate: String? = nil) async throws -> [SchoolDailyLeaderboardEntry] {
@@ -424,6 +453,41 @@ final class SupabaseService {
             }
             await client.realtimeV2.removeChannel(channel)
         }
+    }
+
+    // MARK: - Account Recovery
+
+    func isRecoveryAdmin() async throws -> Bool {
+        try await client.rpc("is_recovery_admin").execute().value
+    }
+
+    func createRecoveryRequest(username: String, note: String?) async throws -> RecoveryRequestRow {
+        try await client.rpc(
+            "create_recovery_request",
+            params: CreateRecoveryRequestParams(username: username, note: note)
+        ).execute().value
+    }
+
+    func fetchMyRecoveryRequests() async throws -> [RecoveryRequestRow] {
+        try await client.rpc("list_my_recovery_requests").execute().value
+    }
+
+    func fetchAdminRecoveryRequests() async throws -> [AdminRecoveryRequestRow] {
+        try await client.rpc("admin_list_recovery_requests").execute().value
+    }
+
+    func reviewRecoveryRequest(id: UUID, approve: Bool) async throws {
+        try await client.rpc(
+            "review_recovery_request",
+            params: ReviewRecoveryRequestParams(requestId: id, approve: approve)
+        ).execute()
+    }
+
+    func completeRecoveryRequest(id: UUID) async throws -> ProfileRow {
+        try await client.rpc(
+            "complete_recovery_request",
+            params: CompleteRecoveryRequestParams(requestId: id)
+        ).execute().value
     }
 }
 

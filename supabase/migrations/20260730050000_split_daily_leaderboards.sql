@@ -54,7 +54,6 @@ as $$
   order by r.position, r.school_key
   limit 100;
 $$;
-
 -- A user's friend leaderboard contains only that user and accepted friends.
 create or replace function public.daily_friends_leaderboard(p_puzzle_date text default null)
 returns table (
@@ -111,7 +110,6 @@ as $$
   order by r.position, r.username
   limit 100;
 $$;
-
 revoke all on function public.daily_school_averages(text) from public;
 revoke all on function public.daily_friends_leaderboard(text) from public;
 grant execute on function public.daily_school_averages(text) to authenticated;

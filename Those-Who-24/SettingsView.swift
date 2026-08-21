@@ -13,6 +13,8 @@ struct SettingsView: View {
     @State private var showUniversity = false
     @State private var showDailyGame = false
     @State private var showOfflineDailyAlert = false
+    @State private var showRecovery = false
+    @State private var showRecoveryAdmin = false
     @State private var daily = DailyPuzzleManager.shared
     @State private var network = NetworkMonitor.shared
 
@@ -96,6 +98,12 @@ struct SettingsView: View {
         .sheet(isPresented: $showUniversity) {
             UniversitySettingsView(manager: daily)
         }
+        .sheet(isPresented: $showRecovery) {
+            RecoveryCenterView()
+        }
+        .sheet(isPresented: $showRecoveryAdmin) {
+            RecoveryAdminView()
+        }
         .fullScreenCover(isPresented: $showDailyGame) {
             if let puzzle = daily.puzzle {
                 DailyPuzzleView(puzzle: puzzle) {
@@ -170,6 +178,33 @@ struct SettingsView: View {
                     )
                 }
                 .buttonStyle(.plain)
+
+                Divider().opacity(0.35)
+
+                Button {
+                    showRecovery = true
+                } label: {
+                    settingsRow(
+                        icon: "person.crop.circle.badge.questionmark",
+                        title: "Account Recovery",
+                        detail: RecoveryManager.shared.activeRequest?.status.capitalized ?? ""
+                    )
+                }
+                .buttonStyle(.plain)
+
+                if friends.isAdmin, friends.username == "priscillaye" {
+                    Divider().opacity(0.35)
+                    Button {
+                        showRecoveryAdmin = true
+                    } label: {
+                        settingsRow(
+                            icon: "lock.shield.fill",
+                            title: "Recovery Admin",
+                            detail: "Private"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .background(Theme.cream)
             .clipShape(RoundedRectangle(cornerRadius: 18))

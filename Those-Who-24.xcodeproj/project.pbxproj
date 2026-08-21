@@ -104,6 +104,14 @@
 				TargetAttributes = {
 					BD7BC9DF2FA1BFF500BD5B88 = {
 						CreatedOnToolsVersion = 26.3;
+						SystemCapabilities = {
+							com.apple.SignInWithApple = {
+								enabled = 1;
+							};
+							com.apple.Push = {
+								enabled = 1;
+							};
+						};
 					};
 				};
 			};

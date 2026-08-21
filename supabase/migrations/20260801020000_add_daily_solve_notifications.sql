@@ -13,9 +13,7 @@ create table if not exists public.daily_solve_notifications (
   constraint daily_solve_notification_not_self
     check (solver_id <> recipient_id)
 );
-
 alter table public.daily_solve_notifications enable row level security;
-
 -- Only the service-role Edge Function reads and writes this internal delivery
 -- ledger. App users do not receive table policies.
 revoke all on table public.daily_solve_notifications from anon, authenticated;

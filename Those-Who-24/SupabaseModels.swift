@@ -80,6 +80,63 @@ struct ProfileRow: Codable, Identifiable {
     }
 }
 
+struct DailyCompletionDate: Codable, Identifiable {
+    let puzzleDate: String
+    var id: String { puzzleDate }
+
+    enum CodingKeys: String, CodingKey {
+        case puzzleDate = "puzzle_date"
+    }
+}
+
+struct RecoveryRequestRow: Codable, Identifiable {
+    let id: UUID
+    let requesterId: UUID
+    let claimedUsername: String
+    let note: String?
+    let status: String
+    let oldUserId: UUID?
+    let createdAt: Date
+    let reviewedAt: Date?
+    let completedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, note, status
+        case requesterId = "requester_id"
+        case claimedUsername = "claimed_username"
+        case oldUserId = "old_user_id"
+        case createdAt = "created_at"
+        case reviewedAt = "reviewed_at"
+        case completedAt = "completed_at"
+    }
+}
+
+struct AdminRecoveryRequestRow: Codable, Identifiable {
+    let id: UUID
+    let requesterId: UUID
+    let claimedUsername: String
+    let currentUsername: String?
+    let note: String?
+    let status: String
+    let oldUserId: UUID?
+    let oldIsAppleBacked: Bool
+    let oldFriendCount: Int
+    let oldCompletionCount: Int
+    let createdAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case id, note, status
+        case requesterId = "requester_id"
+        case claimedUsername = "claimed_username"
+        case currentUsername = "current_username"
+        case oldUserId = "old_user_id"
+        case oldIsAppleBacked = "old_is_apple_backed"
+        case oldFriendCount = "old_friend_count"
+        case oldCompletionCount = "old_completion_count"
+        case createdAt = "created_at"
+    }
+}
+
 // MARK: - Daily Puzzle Models
 
 struct DailyPuzzleState: Codable {
@@ -351,6 +408,64 @@ extension SubmitDailyPuzzleParams: Encodable {
 
 struct DailyLeaderboardParams: Sendable {
     let puzzleDate: String?
+}
+
+struct MergeDailyCompletionDatesParams: Sendable {
+    let dates: [String]
+}
+
+extension MergeDailyCompletionDatesParams: Encodable {
+    enum CodingKeys: String, CodingKey { case dates = "p_dates" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(dates, forKey: .dates)
+    }
+}
+
+struct CreateRecoveryRequestParams: Sendable {
+    let username: String
+    let note: String?
+}
+
+extension CreateRecoveryRequestParams: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case username = "p_username"
+        case note = "p_note"
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(username, forKey: .username)
+        try c.encodeIfPresent(note, forKey: .note)
+    }
+}
+
+struct ReviewRecoveryRequestParams: Sendable {
+    let requestId: UUID
+    let approve: Bool
+}
+
+extension ReviewRecoveryRequestParams: Encodable {
+    enum CodingKeys: String, CodingKey {
+        case requestId = "p_request_id"
+        case approve = "p_approve"
+    }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestId, forKey: .requestId)
+        try c.encode(approve, forKey: .approve)
+    }
+}
+
+struct CompleteRecoveryRequestParams: Sendable {
+    let requestId: UUID
+}
+
+extension CompleteRecoveryRequestParams: Encodable {
+    enum CodingKeys: String, CodingKey { case requestId = "p_request_id" }
+    nonisolated func encode(to encoder: any Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(requestId, forKey: .requestId)
+    }
 }
 
 extension DailyLeaderboardParams: Encodable {

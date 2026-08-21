@@ -2,7 +2,6 @@ alter table public.profiles
   add column if not exists university_email text,
   add column if not exists university_school_key text not null default 'non-school',
   add column if not exists university_verified boolean not null default false;
-
 create table if not exists public.daily_puzzle_attempts (
   user_id uuid not null references public.profiles(id) on delete cascade,
   puzzle_date date not null,
@@ -16,13 +15,10 @@ create table if not exists public.daily_puzzle_attempts (
     completed_milliseconds is null or completed_milliseconds >= 0
   )
 );
-
 create index if not exists daily_puzzle_ranking_idx
   on public.daily_puzzle_attempts(puzzle_date, completed_milliseconds)
   where completed_milliseconds is not null;
-
 alter table public.daily_puzzle_attempts enable row level security;
-
 -- Daily puzzles come from a stable, solvable bank. Indexing by the UTC date makes
 -- the selection identical across devices without trusting a device clock.
 create or replace function public.daily_puzzle_numbers(p_date date)
@@ -48,7 +44,6 @@ as $$
     else array[5,6,7,8]
   end;
 $$;
-
 create or replace function public.start_daily_puzzle()
 returns jsonb
 language plpgsql
@@ -79,7 +74,6 @@ begin
   );
 end;
 $$;
-
 create or replace function public.submit_daily_puzzle(p_puzzle_date text)
 returns integer
 language plpgsql
@@ -121,7 +115,6 @@ begin
   return v_milliseconds;
 end;
 $$;
-
 create or replace function public.get_university_status()
 returns jsonb
 language sql
@@ -137,7 +130,6 @@ as $$
   from public.profiles p
   where p.id = auth.uid();
 $$;
-
 create or replace function public.sync_university_email()
 returns jsonb
 language plpgsql
@@ -180,7 +172,6 @@ begin
   return v_status;
 end;
 $$;
-
 create or replace function public.daily_school_leaderboard(p_puzzle_date text default null)
 returns table (
   rank bigint,
@@ -227,7 +218,6 @@ as $$
   order by r.position, r.username
   limit 100;
 $$;
-
 revoke all on function public.daily_puzzle_numbers(date) from public;
 revoke all on function public.start_daily_puzzle() from public;
 revoke all on function public.submit_daily_puzzle(text) from public;

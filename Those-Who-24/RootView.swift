@@ -20,6 +20,7 @@ struct RootView: View {
     @State private var network = NetworkMonitor.shared
     @State private var showDailyPuzzle = false
     @State private var showFriendRequests = false
+    @State private var showApprovedRecovery = false
     @State private var isPreparingDailyPuzzle = false
     @State private var multiplayerUnavailableMessage: String?
     @ObservedObject private var themeManager = ThemeManager.shared
@@ -72,6 +73,9 @@ struct RootView: View {
         .sheet(isPresented: $showFriendRequests) {
             FriendsView(manager: friends, initiallyShowsRequests: true)
         }
+        .sheet(isPresented: $showApprovedRecovery) {
+            RecoveryCenterView()
+        }
         .alert("Multiplayer Unavailable", isPresented: Binding(
             get: { multiplayerUnavailableMessage != nil },
             set: { if !$0 { multiplayerUnavailableMessage = nil } }
@@ -82,6 +86,7 @@ struct RootView: View {
         }
         .task {
             await friends.bootstrap()
+            await refreshRecoveryApproval()
             if mpVM.displayName.isEmpty, let username = friends.username {
                 mpVM.displayName = username
             }
@@ -95,8 +100,10 @@ struct RootView: View {
             }
         }
         .onChange(of: friends.state) { _, state in
-            guard state == .ready else { return }
+            guard state == .ready || state == .needsUsername else { return }
             Task {
+                await refreshRecoveryApproval()
+                guard state == .ready else { return }
                 await joinPendingInviteIfPossible()
                 openPendingFriendRequestsIfPossible()
                 await refreshDailyPuzzleStatus()
@@ -116,7 +123,13 @@ struct RootView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            Task { await refreshDailyPuzzleStatus() }
+            Task {
+                if friends.isOffline {
+                    await friends.retryBootstrap()
+                }
+                await refreshRecoveryApproval()
+                await refreshDailyPuzzleStatus()
+            }
         }
         .onChange(of: network.isConnected) { _, isConnected in
             if isConnected {
@@ -139,7 +152,7 @@ struct RootView: View {
 
     private var shouldShowSocialGate: Bool {
         switch friends.state {
-        case .needsUsername:
+        case .needsAppleSignIn, .needsAppleMigration, .needsUsername:
             return true
         case .loading, .ready, .failed:
             return false
@@ -159,6 +172,11 @@ struct RootView: View {
             return
         }
         mode = .multiplayer
+    }
+
+    private func refreshRecoveryApproval() async {
+        await RecoveryManager.shared.refreshMine()
+        showApprovedRecovery = RecoveryManager.shared.activeRequest?.status == "approved"
     }
 
     private func refreshDailyPuzzleStatus() async {

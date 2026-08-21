@@ -1,5 +1,4 @@
 create extension if not exists citext with schema extensions;
-
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username extensions.citext unique,
@@ -10,7 +9,6 @@ create table if not exists public.profiles (
     or username::text ~ '^[a-z0-9_]{3,20}$'
   )
 );
-
 create table if not exists public.friend_connections (
   id uuid primary key default gen_random_uuid(),
   sender_id uuid not null references public.profiles(id) on delete cascade,
@@ -21,19 +19,15 @@ create table if not exists public.friend_connections (
   responded_at timestamptz,
   constraint different_users check (sender_id <> receiver_id)
 );
-
 create unique index if not exists friend_connections_unique_pair
   on public.friend_connections (
     least(sender_id, receiver_id),
     greatest(sender_id, receiver_id)
   );
-
 create index if not exists friend_connections_sender_idx
   on public.friend_connections(sender_id, status);
-
 create index if not exists friend_connections_receiver_idx
   on public.friend_connections(receiver_id, status);
-
 create table if not exists public.device_tokens (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,
@@ -43,52 +37,43 @@ create table if not exists public.device_tokens (
     check (environment in ('development', 'production')),
   updated_at timestamptz not null default now()
 );
-
 create index if not exists device_tokens_user_idx
   on public.device_tokens(user_id);
-
 alter table public.profiles enable row level security;
 alter table public.friend_connections enable row level security;
 alter table public.device_tokens enable row level security;
-
 drop policy if exists "Profiles are readable by signed-in users" on public.profiles;
 create policy "Profiles are readable by signed-in users"
   on public.profiles for select
   to authenticated
   using (username is not null or id = auth.uid());
-
 drop policy if exists "Users can update their own profile" on public.profiles;
 create policy "Users can update their own profile"
   on public.profiles for update
   to authenticated
   using (id = auth.uid())
   with check (id = auth.uid());
-
 drop policy if exists "Participants can read connections" on public.friend_connections;
 create policy "Participants can read connections"
   on public.friend_connections for select
   to authenticated
   using (auth.uid() in (sender_id, receiver_id));
-
 drop policy if exists "Users can register their devices" on public.device_tokens;
 create policy "Users can register their devices"
   on public.device_tokens for insert
   to authenticated
   with check (user_id = auth.uid());
-
 drop policy if exists "Users can update their devices" on public.device_tokens;
 create policy "Users can update their devices"
   on public.device_tokens for update
   to authenticated
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
-
 drop policy if exists "Users can remove their devices" on public.device_tokens;
 create policy "Users can remove their devices"
   on public.device_tokens for delete
   to authenticated
   using (user_id = auth.uid());
-
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -100,16 +85,13 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
 insert into public.profiles (id)
 select id from auth.users
 on conflict (id) do nothing;
-
 create or replace function public.set_username(p_username text)
 returns public.profiles
 language plpgsql
@@ -138,7 +120,6 @@ exception
     raise exception 'That username is already taken';
 end;
 $$;
-
 create or replace function public.search_profiles(p_query text)
 returns table (
   user_id uuid,
@@ -197,7 +178,6 @@ as $$
     ), 'none')
   from candidates p;
 $$;
-
 create or replace function public.list_friend_connections()
 returns table (
   request_id uuid,
@@ -232,7 +212,6 @@ as $$
          when c.status = 'pending' then 1 else 2 end,
     c.created_at desc;
 $$;
-
 create or replace function public.send_friend_request(p_receiver_id uuid)
 returns uuid
 language plpgsql
@@ -278,7 +257,6 @@ begin
   return v_id;
 end;
 $$;
-
 create or replace function public.respond_to_friend_request(
   p_request_id uuid,
   p_accept boolean
@@ -301,7 +279,6 @@ begin
   end if;
 end;
 $$;
-
 create or replace function public.remove_friend_connection(p_user_id uuid)
 returns void
 language plpgsql
@@ -318,7 +295,6 @@ begin
   end if;
 end;
 $$;
-
 create or replace function public.register_device_token(
   p_token text,
   p_environment text
@@ -344,7 +320,6 @@ begin
         updated_at = now();
 end;
 $$;
-
 revoke all on function public.set_username(text) from public;
 revoke all on function public.search_profiles(text) from public;
 revoke all on function public.list_friend_connections() from public;
@@ -352,7 +327,6 @@ revoke all on function public.send_friend_request(uuid) from public;
 revoke all on function public.respond_to_friend_request(uuid, boolean) from public;
 revoke all on function public.remove_friend_connection(uuid) from public;
 revoke all on function public.register_device_token(text, text) from public;
-
 grant execute on function public.set_username(text) to authenticated;
 grant execute on function public.search_profiles(text) to authenticated;
 grant execute on function public.list_friend_connections() to authenticated;
@@ -360,7 +334,6 @@ grant execute on function public.send_friend_request(uuid) to authenticated;
 grant execute on function public.respond_to_friend_request(uuid, boolean) to authenticated;
 grant execute on function public.remove_friend_connection(uuid) to authenticated;
 grant execute on function public.register_device_token(text, text) to authenticated;
-
 do $$
 begin
   alter publication supabase_realtime add table public.friend_connections;

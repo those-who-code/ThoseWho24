@@ -2,14 +2,11 @@
 -- also use the UTC date, so old attempts can be removed as soon as that date
 -- changes.
 create extension if not exists pg_cron with schema pg_catalog;
-
 alter table public.rooms
   add column if not exists finished_at timestamptz;
-
 create index if not exists rooms_finished_at_idx
   on public.rooms(finished_at)
   where status = 'finished';
-
 create or replace function public.set_room_finished_at()
 returns trigger
 language plpgsql
@@ -25,19 +22,16 @@ begin
   return new;
 end;
 $$;
-
 drop trigger if exists set_room_finished_at on public.rooms;
 create trigger set_room_finished_at
   before update of status on public.rooms
   for each row execute function public.set_room_finished_at();
-
 -- Start the retention clock for rooms that were already finished before this
 -- migration. They will be retained for 24 hours after deployment.
 update public.rooms
 set finished_at = now()
 where status = 'finished'
   and finished_at is null;
-
 create or replace function public.cleanup_expired_game_data()
 returns void
 language plpgsql
@@ -64,10 +58,8 @@ begin
     and r.finished_at <= now() - interval '24 hours';
 end;
 $$;
-
 revoke all on function public.set_room_finished_at() from public;
 revoke all on function public.cleanup_expired_game_data() from public;
-
 -- Recreating named jobs makes this migration safe to re-run during recovery.
 do $$
 declare
@@ -83,7 +75,6 @@ begin
   end loop;
 end;
 $$;
-
 -- The leaderboard functions read from daily_puzzle_attempts, so deleting prior
 -- dates clears solved state and both leaderboards together. A five-minute delay
 -- keeps the job away from the exact date-boundary request spike.
@@ -93,7 +84,6 @@ select cron.schedule(
   $$delete from public.daily_puzzle_attempts
     where puzzle_date < (now() at time zone 'utc')::date$$
 );
-
 -- Hourly cleanup means a finished game is removed between 24 and 25 hours
 -- after it ends.
 select cron.schedule(
