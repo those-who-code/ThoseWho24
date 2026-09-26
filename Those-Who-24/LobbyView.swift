@@ -27,7 +27,7 @@ struct LobbyView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Theme.brown.opacity(0.5))
+                        .foregroundColor(Theme.textSecondary)
                         .frame(width: 32, height: 32)
                         .background(Theme.cream.opacity(0.7))
                         .clipShape(Circle())
@@ -68,7 +68,9 @@ struct LobbyView: View {
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
                                 .frame(maxWidth: .infinity)
                                 .frame(height: 44)
-                                .foregroundColor(lobbyMode == mode ? Theme.cardSelectedText : Theme.brown.opacity(0.5))
+                                .foregroundColor(
+                                    lobbyMode == mode ? Theme.cardSelectedText : Theme.textSecondary
+                                )
                                 .contentShape(Rectangle())
                                 .background(lobbyMode == mode ? Theme.buttonPrimary : Color.white.opacity(0.001))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -79,7 +81,6 @@ struct LobbyView: View {
                 .padding(4)
                 .background(Theme.cream)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-                .colorScheme(.light)
                 .padding(.horizontal, 32)
 
                 // Input fields
@@ -91,7 +92,6 @@ struct LobbyView: View {
                         .frame(height: 52)
                         .background(Theme.cream)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .colorScheme(.light)
                         .focused($nameFieldFocused)
                         .submitLabel(.next)
                         .autocorrectionDisabled()
@@ -107,7 +107,6 @@ struct LobbyView: View {
                             .frame(height: 52)
                             .background(Theme.cream)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .colorScheme(.light)
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.characters)

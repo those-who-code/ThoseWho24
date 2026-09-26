@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - App Mode
 
-enum AppMode {
+enum AppMode: Equatable {
     case singlePlayer
     case multiplayer
     case stats
@@ -14,16 +14,32 @@ enum AppMode {
 struct RootView: View {
     @State private var mode: AppMode = .singlePlayer
     @State private var mpVM = MultiplayerViewModel()
+    @State private var friends = FriendsManager.shared
+    @State private var notifications = PushNotificationManager.shared
+    @State private var daily = DailyPuzzleManager.shared
+    @State private var network = NetworkMonitor.shared
+    @State private var showDailyPuzzle = false
+    @State private var showFriendRequests = false
+    @State private var showApprovedRecovery = false
+    @State private var isPreparingDailyPuzzle = false
+    @State private var multiplayerUnavailableMessage: String?
     @ObservedObject private var themeManager = ThemeManager.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         ZStack {
             switch mode {
             case .singlePlayer:
                 ContentView(
-                    onMultiplayerTap: { mode = .multiplayer },
+                    onMultiplayerTap: openMultiplayer,
                     onStatsTap: { mode = .stats },
-                    onSettingsTap: { mode = .settings }
+                    onSettingsTap: { mode = .settings },
+                    onDailyTap: daily.hasCompletedToday ? nil : {
+                        guard network.isConnected else { return }
+                        Task { await openDailyPuzzle() }
+                    },
+                    highlightDailyBanner: daily.isFirstDailyExperience,
+                    isOnline: network.isConnected
                 )
                 .transition(.opacity)
             case .stats:
@@ -39,8 +55,184 @@ struct RootView: View {
                 }
                 .transition(.opacity)
             }
+
+            if network.isConnected && shouldShowSocialGate {
+                SocialGateOverlay(friends: friends)
+                    .zIndex(10)
+            }
         }
+        .preferredColorScheme(themeManager.current.interfaceColorScheme)
         .animation(.easeInOut(duration: 0.2), value: mode)
+        .fullScreenCover(isPresented: $showDailyPuzzle) {
+            if let puzzle = daily.puzzle {
+                DailyPuzzleView(puzzle: puzzle) {
+                    showDailyPuzzle = false
+                }
+            }
+        }
+        .sheet(isPresented: $showFriendRequests) {
+            FriendsView(manager: friends, initiallyShowsRequests: true)
+        }
+        .sheet(isPresented: $showApprovedRecovery) {
+            RecoveryCenterView()
+        }
+        .alert("Multiplayer Unavailable", isPresented: Binding(
+            get: { multiplayerUnavailableMessage != nil },
+            set: { if !$0 { multiplayerUnavailableMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(multiplayerUnavailableMessage ?? "")
+        }
+        .task {
+            await friends.bootstrap()
+            await refreshRecoveryApproval()
+            if mpVM.displayName.isEmpty, let username = friends.username {
+                mpVM.displayName = username
+            }
+            await joinPendingInviteIfPossible()
+            openPendingFriendRequestsIfPossible()
+            await refreshDailyPuzzleStatus()
+        }
+        .onChange(of: friends.username) { _, username in
+            if mpVM.displayName.isEmpty, let username {
+                mpVM.displayName = username
+            }
+        }
+        .onChange(of: friends.state) { _, state in
+            guard state == .ready || state == .needsUsername else { return }
+            Task {
+                await refreshRecoveryApproval()
+                guard state == .ready else { return }
+                await joinPendingInviteIfPossible()
+                openPendingFriendRequestsIfPossible()
+                await refreshDailyPuzzleStatus()
+            }
+        }
+        .onChange(of: notifications.pendingRoomCode) { _, roomCode in
+            guard roomCode != nil else { return }
+            Task { await joinPendingInviteIfPossible() }
+        }
+        .onChange(of: notifications.pendingDailyPuzzle) { _, isPending in
+            guard isPending else { return }
+            Task { await openPendingDailyPuzzleReminder() }
+        }
+        .onChange(of: notifications.pendingFriendRequests) { _, isPending in
+            guard isPending else { return }
+            openPendingFriendRequestsIfPossible()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task {
+                if friends.isOffline {
+                    await friends.retryBootstrap()
+                }
+                await refreshRecoveryApproval()
+                await refreshDailyPuzzleStatus()
+            }
+        }
+        .onChange(of: network.isConnected) { _, isConnected in
+            if isConnected {
+                if case .failed = friends.state {
+                    Task { await friends.retryBootstrap() }
+                } else if friends.state == .ready {
+                    Task {
+                        await joinPendingInviteIfPossible()
+                        openPendingFriendRequestsIfPossible()
+                        await refreshDailyPuzzleStatus()
+                    }
+                }
+            } else if mode == .multiplayer {
+                Task { await mpVM.leaveRoom() }
+                mode = .singlePlayer
+                multiplayerUnavailableMessage = "Your internet connection was lost. Multiplayer requires an internet connection."
+            }
+        }
+    }
+
+    private var shouldShowSocialGate: Bool {
+        switch friends.state {
+        case .needsAppleSignIn, .needsAppleMigration, .needsUsername:
+            return true
+        case .loading, .ready, .failed:
+            return false
+        }
+    }
+
+    private func openMultiplayer() {
+        guard network.isConnected else {
+            multiplayerUnavailableMessage = "Connect to the internet to create or join a multiplayer room."
+            return
+        }
+        guard friends.state == .ready else {
+            multiplayerUnavailableMessage = "Your online profile could not be loaded. Check your connection and try again."
+            if case .failed = friends.state {
+                Task { await friends.retryBootstrap() }
+            }
+            return
+        }
+        mode = .multiplayer
+    }
+
+    private func refreshRecoveryApproval() async {
+        await RecoveryManager.shared.refreshMine()
+        showApprovedRecovery = RecoveryManager.shared.activeRequest?.status == "approved"
+    }
+
+    private func refreshDailyPuzzleStatus() async {
+        guard network.isConnected, friends.state == .ready else { return }
+        guard await daily.refreshTodayStatus() else { return }
+        await notifications.scheduleDailyPuzzleReminderIfNeeded(
+            hasCompletedToday: daily.hasCompletedToday,
+            utcDateKey: daily.utcDateKey
+        )
+        if notifications.pendingDailyPuzzle {
+            await openPendingDailyPuzzleReminder()
+        }
+    }
+
+    private func openPendingDailyPuzzleReminder() async {
+        guard network.isConnected, friends.state == .ready else { return }
+        notifications.consumeDailyPuzzleReminder()
+        mode = .singlePlayer
+        await openDailyPuzzle()
+    }
+
+    private func openPendingFriendRequestsIfPossible() {
+        guard network.isConnected,
+              friends.state == .ready,
+              notifications.pendingFriendRequests else { return }
+        notifications.consumeFriendRequests()
+        showFriendRequests = true
+    }
+
+    private func openDailyPuzzle() async {
+        guard !showDailyPuzzle, !isPreparingDailyPuzzle else { return }
+        isPreparingDailyPuzzle = true
+        defer { isPreparingDailyPuzzle = false }
+        if await daily.startToday() != nil {
+            showDailyPuzzle = true
+        }
+    }
+
+    private func joinPendingInviteIfPossible() async {
+        guard network.isConnected,
+              friends.state == .ready,
+              let roomCode = notifications.pendingRoomCode else { return }
+
+        notifications.consumeRoomInvite()
+        mode = .multiplayer
+
+        guard mpVM.state == .nameEntry else {
+            mpVM.errorMessage = "Leave your current multiplayer room before joining another invite."
+            return
+        }
+
+        if mpVM.displayName.isEmpty, let username = friends.username {
+            mpVM.displayName = username
+        }
+        mpVM.joinCode = roomCode
+        await mpVM.joinRoom()
     }
 }
 
@@ -115,11 +307,69 @@ struct MultiplayerRootView: View {
 
 // MARK: - Shared move type
 
-private struct WinnerMove {
+struct WinnerMove {
     let firstIdx: Int
     let secondIdx: Int
     let op: String
     let result: String
+}
+
+private enum WinnerMoveParser {
+    static func parse(_ solution: String, numbers: [Int]) -> [WinnerMove] {
+        guard numbers.count == 4,
+              let separator = solution.firstIndex(of: "|") else { return [] }
+        let encoded = solution[solution.index(after: separator)...]
+        let tokens = encoded.split(separator: ",", omittingEmptySubsequences: false)
+        guard tokens.count == 3 else { return [] }
+
+        var cards: [Fraction?] = numbers.map { Fraction($0) }
+        var moves: [WinnerMove] = []
+
+        for token in tokens {
+            let parts = token.split(separator: ":", omittingEmptySubsequences: false)
+            guard parts.count == 4,
+                  let first = Int(parts[0]), let second = Int(parts[1]),
+                  cards.indices.contains(first), cards.indices.contains(second),
+                  first != second,
+                  let lhs = cards[first], let rhs = cards[second],
+                  let claimedResult = fraction(from: String(parts[3])) else { return [] }
+
+            let op = String(parts[2])
+            let result: Fraction
+            switch op {
+            case MathOperator.add.rawValue: result = lhs + rhs
+            case MathOperator.subtract.rawValue: result = lhs - rhs
+            case MathOperator.multiply.rawValue: result = lhs * rhs
+            case MathOperator.divide.rawValue:
+                guard let quotient = lhs / rhs else { return [] }
+                result = quotient
+            default: return []
+            }
+            guard result == claimedResult else { return [] }
+
+            cards[first] = nil
+            cards[second] = result
+            moves.append(WinnerMove(
+                firstIdx: first,
+                secondIdx: second,
+                op: op,
+                result: result.display
+            ))
+        }
+
+        guard cards.compactMap({ $0 }).count == 1,
+              cards.compactMap({ $0 }).first == Fraction(24) else { return [] }
+        return moves
+    }
+
+    private static func fraction(from value: String) -> Fraction? {
+        let pieces = value.split(separator: "/", omittingEmptySubsequences: false)
+        guard pieces.count == 1 || pieces.count == 2,
+              let numerator = Int(pieces[0]) else { return nil }
+        if pieces.count == 1 { return Fraction(numerator) }
+        guard let denominator = Int(pieces[1]), denominator > 0 else { return nil }
+        return Fraction(numerator, denominator)
+    }
 }
 
 // MARK: - Round Result Overlay
@@ -140,19 +390,14 @@ struct RoundResultOverlay: View {
     }
 
     private var parsedMoves: [WinnerMove] {
-        guard let indexPart = winnerSolution.components(separatedBy: "|").dropFirst().first else { return [] }
-        return indexPart.components(separatedBy: ",").compactMap { token in
-            let parts = token.components(separatedBy: ":")
-            guard parts.count >= 4, let f = Int(parts[0]), let s = Int(parts[1]) else { return nil }
-            return WinnerMove(firstIdx: f, secondIdx: s, op: parts[2], result: parts[3])
-        }
+        WinnerMoveParser.parse(winnerSolution, numbers: numbers)
     }
 
     private var computedExpression: String {
         guard !parsedMoves.isEmpty, numbers.count == 4 else { return displayPart }
         var exprs: [String?] = numbers.map { "\($0)" }
         for m in parsedMoves {
-            guard m.firstIdx < exprs.count, m.secondIdx < exprs.count,
+            guard exprs.indices.contains(m.firstIdx), exprs.indices.contains(m.secondIdx),
                   let a = exprs[m.firstIdx], let b = exprs[m.secondIdx] else { continue }
             exprs[m.secondIdx] = "(\(a) \(m.op) \(b))"
             exprs[m.firstIdx] = nil
@@ -175,7 +420,7 @@ struct RoundResultOverlay: View {
                     } label: {
                         Image(systemName: "arrow.left")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Theme.brown.opacity(0.5))
+                            .foregroundColor(Theme.textSecondary)
                             .frame(width: 32, height: 32)
                             .background(Theme.cream.opacity(0.7))
                             .clipShape(Circle())
@@ -190,7 +435,7 @@ struct RoundResultOverlay: View {
                 VStack(spacing: 10) {
                     Image(systemName: didWin ? "star.fill" : "clock.badge.exclamationmark")
                         .font(.system(size: 36))
-                        .foregroundColor(didWin ? Theme.amber : Theme.brown.opacity(0.4))
+                        .foregroundColor(didWin ? Theme.amber : Theme.textSecondary)
 
                     Text(didWin ? "You solved it!" : "\(winnerName) was faster")
                         .font(.system(size: 26, weight: .bold, design: .rounded))
@@ -204,7 +449,7 @@ struct RoundResultOverlay: View {
                 if !numbers.isEmpty {
                     Text(computedExpression)
                         .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundColor(Theme.brown.opacity(0.7))
+                        .foregroundColor(Theme.textSecondary)
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 48)
@@ -212,7 +457,7 @@ struct RoundResultOverlay: View {
 
                     Text(didWin ? "Your solution" : "\(winnerName)'s solution")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Theme.amber)
+                        .foregroundColor(Theme.textPrimary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 48)
                         .padding(.bottom, 6)
@@ -234,7 +479,7 @@ struct RoundResultOverlay: View {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Solution \(idx + 1)")
                                     .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(Theme.amber)
+                                    .foregroundColor(Theme.textPrimary)
 
                                 Text(sol.expression)
                                     .font(.system(size: 14, weight: .semibold, design: .monospaced))
@@ -243,7 +488,7 @@ struct RoundResultOverlay: View {
                                 ForEach(Array(sol.steps.enumerated()), id: \.offset) { _, step in
                                     Text("\(step.a) \(step.op) \(step.b) = \(step.result)")
                                         .font(.system(size: 13, weight: .medium, design: .monospaced))
-                                        .foregroundColor(Theme.brown.opacity(0.6))
+                                        .foregroundColor(Theme.textSecondary)
                                 }
                             }
                             .padding(12)
@@ -284,7 +529,7 @@ struct RoundResultOverlay: View {
 
 // MARK: - Animated Card Replay
 
-private struct CardAnimationView: View {
+struct CardAnimationView: View {
     let numbers: [Int]
     let moves: [WinnerMove]
 
@@ -412,7 +657,7 @@ struct DissolvedView: View {
         VStack(spacing: 24) {
             Image(systemName: "leaf.fill")
                 .font(.system(size: 36))
-                .foregroundColor(Theme.warmGreen.opacity(0.5))
+                .foregroundColor(Theme.warmGreen)
 
             Text(reason)
                 .font(.system(size: 18, weight: .medium, design: .rounded))
